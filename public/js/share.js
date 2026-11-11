@@ -14,7 +14,8 @@ function fail(title, body) {
   document.title = `${title} · Taglet`;
 }
 
-const [, id, keyText] = location.hash.match(/^#([A-Za-z0-9]{12})\.([A-Za-z0-9_-]{20,})$/) || [];
+const pathId = location.pathname.match(/^\/s\/([A-Za-z0-9]{12})\/?$/)?.[1];
+const [, id, keyText] = (pathId ? `#${pathId}.${location.hash.slice(1)}` : location.hash).match(/^#([A-Za-z0-9]{12})\.([A-Za-z0-9_-]{20,})$/) || [];
 let key;
 
 /** Fetch one encrypted part. A brand-new link can take a few seconds to reach every Cloudflare location. */

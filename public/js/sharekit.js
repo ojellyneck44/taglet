@@ -19,5 +19,5 @@ export async function unseal(key, bytes) {
   return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.subarray(0, 12) }, key, bytes.subarray(12)));
 }
 
-/** "https://taglet.net/s/#<id>.<key>" */
-export const shareUrl = (id, keyBytes) => `${location.origin}/s/#${id}.${b64url(keyBytes)}`;
+/** "https://taglet.net/s/<id>#<key>". The key stays after the #; links made before Nov 2026 were /s/#<id>.<key>. */
+export const shareUrl = (id, keyBytes) => `${location.origin}/s/${id}#${b64url(keyBytes)}`;

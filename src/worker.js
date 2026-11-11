@@ -62,6 +62,8 @@ export default {
       return env.ROOMS.get(env.ROOMS.idFromName(m[1])).fetch(req);
     }
     if (url.pathname.startsWith("/api/share")) return share(req, env, url);
+    const s = url.pathname.match(/^\/s\/([A-Za-z0-9]{12})\/?$/);
+    if (s && req.method === "GET") return sharePage(req, env, s[1]);
     if (url.pathname.startsWith("/api/fetch/")) return fetchLink(req, env, url);
     if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/account/")) return account(req, env, url);
     if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
@@ -97,6 +99,12 @@ async function share(req, env, url) {
   }
   if (!/^[A-Za-z0-9]{12}$/.test(id || "")) return text("Not found", 404);
 
+  // The link preview: the cover and the album's name, left readable on purpose so chat apps can show them.
+  if (req.method === "GET" && part === "card") {
+    const { value } = await env.SHARES.getWithMetadata(`s:${id}:card`, "stream");
+    if (!value) return new Response(null, { status: 404 });
+    return new Response(value, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=300" } });
+  }
   if (req.method === "GET" && PART.test(part || "")) {
     const body = await env.SHARES.get(`s:${id}:${part}`, "stream");
     // 204 rather than 404: a gone link is a normal answer here, not an error for the browser console.
@@ -109,6 +117,17 @@ async function share(req, env, url) {
   const given = (req.headers.get("Authorization") || "").replace(/^Bearer /, "");
   if (!stored || !given || stored !== (await sha(given))) return text("Not allowed", 403);
 
+  if (req.method === "PUT" && part === "card") {
+    const size = +req.headers.get("Content-Length") || 0;
+    if (size > 1024 * 1024) return text("The cover preview has to be under 1 MB.", 413);
+    let label;
+    try { label = JSON.parse(decodeURIComponent(req.headers.get("X-Card") || "")); } catch { return text("Bad card", 400); }
+    const clip = (v) => String(v || "").slice(0, 200);
+    if (!(await take(env, "writes", 1, LIMITS.writes))) return tooMany(BUSY);
+    await env.SHARES.put(`s:${id}:card`, size ? req.body : "", { expirationTtl: SHARE_TTL,
+      metadata: { title: clip(label.title), artist: clip(label.artist), kind: label.kind === "single" ? "single" : "album" } });
+    return new Response(null, { status: 204 });
+  }
   if (req.method === "PUT" && PART.test(part || "")) {
     const size = +req.headers.get("Content-Length");
     if (!size || size > MAX_PART) return text("Each file has to be under 24 MB.", 413);
@@ -237,4 +256,27 @@ export class Room extends DurableObject {
     const all = this.ctx.getWebSockets().filter((w) => w.readyState === WebSocket.OPEN);
     for (const w of all) w.send(JSON.stringify({ peers: all.length }));
   }
+}
+
+/** The share page for /s/<id>, with the link preview filled in from the album's card when there is one. */
+async function sharePage(req, env, id) {
+  const page = await env.ASSETS.fetch(new Request(new URL("/s/", req.url)));
+  const { value, metadata: m } = await env.SHARES.getWithMetadata(`s:${id}:card`, "arrayBuffer");
+  if (!m) return page;
+  const title = m.artist ? `${m.title} by ${m.artist}` : m.title;
+  const desc = `${m.kind === "single" ? "A single" : "An album"} shared with Taglet. Listen, or download it tagged for Spotify.`;
+  const set = (v) => ({ element(e) { e.setAttribute("content", v); } });
+  let rw = new HTMLRewriter()
+    .on("title", { element(e) { e.setInnerContent(`${title} · Taglet`); } })
+    .on('meta[property="og:title"]', set(title))
+    .on('meta[property="og:description"]', set(desc))
+    .on('meta[name="description"]', set(desc));
+  if (value?.byteLength) {
+    rw = rw.on('meta[property="og:image"]', set(`${new URL(req.url).origin}/api/share/${id}/card`))
+      .on('meta[property="og:image:width"]', set("800")).on('meta[property="og:image:height"]', set("800"))
+      .on('meta[name="twitter:card"]', set("summary"));
+  }
+  const res = new Response(rw.transform(page).body, page);
+  res.headers.set("Cache-Control", "no-cache");
+  return res;
 }

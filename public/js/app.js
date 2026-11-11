@@ -1270,6 +1270,7 @@ async function publishShare(a) {
       const raw = newKeyBytes();
       s = { id, token, key: b64url(raw), url: shareUrl(id, raw) };
     }
+    s = { ...s, url: shareUrl(s.id, unb64url(s.key)) }; // older links move to the form that shows a preview
     const key = await importKey(unb64url(s.key));
     const put = async (part, bytes) => {
       const r = await fetch(`/api/share/${s.id}/${part}`, { method: "PUT", headers: { Authorization: `Bearer ${s.token}` }, body: await seal(key, bytes) });
@@ -1281,6 +1282,11 @@ async function publishShare(a) {
     if (a.art && !a.art.bytes) a.art.bytes = new Uint8Array(await a.art.blob.arrayBuffer());
     if (a.art) await put("art", a.art.bytes);
     const single = singleAlbum(a);
+    // The preview chat apps show: the cover and name only, readable by the server. The songs stay encrypted.
+    const card = await fetch(`/api/share/${s.id}/card`, { method: "PUT", body: a.art ? await previewJpeg(a.art.blob) : new Uint8Array(),
+      headers: { Authorization: `Bearer ${s.token}`, "X-Card": encodeURIComponent(JSON.stringify({ title: shareTitle(a), kind: single ? "single" : "album",
+        artist: single ? joinArtists(list[0].tags.artists) : a.albumArtist })) } });
+    if (card.status === 429) throw new Error(await card.text());
     const meta = { v: 1, kind: single ? "single" : "album", title: shareTitle(a),
       artist: single ? joinArtists(list[0].tags.artists) : a.albumArtist, year: a.year, genre: a.genre, art: !!a.art, tracks: [] };
     for (const [i, t] of list.entries()) {
@@ -1305,6 +1311,16 @@ async function publishShare(a) {
     toast(err.message || "Sharing failed.", "err");
     showShareState(a);
   } finally { busy--; maybeReload(); }
+}
+
+/** An 800 px JPEG of the cover for link previews. */
+async function previewJpeg(blob) {
+  const img = await loadImage(blob), c = document.createElement("canvas");
+  c.width = c.height = 800;
+  const g = c.getContext("2d");
+  g.imageSmoothingQuality = "high";
+  g.drawImage(img, 0, 0, 800, 800);
+  return new Uint8Array(await (await new Promise((res) => c.toBlob(res, "image/jpeg", 0.85))).arrayBuffer());
 }
 
 async function stopShare(a) {
