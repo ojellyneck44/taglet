@@ -6,7 +6,7 @@ export const TEAM_COOKIE = "taglet_team";
 export const isTeam = (request) => {
   if (!request) return false;
   const ua = request.headers.get("user-agent") || "";
-  return !ua.startsWith("Mozilla/") || /Headless/i.test(ua) || new RegExp(`(?:^|;\s*)${TEAM_COOKIE}=1`).test(request.headers.get("cookie") || "");
+  return !ua.startsWith("Mozilla/") || /Headless/i.test(ua) || (request.headers.get("cookie") || "").split(/;\s*/).includes(`${TEAM_COOKIE}=1`);
 };
 export function logEvent(env, request, name, ...details) {
   if (isTeam(request)) return;
