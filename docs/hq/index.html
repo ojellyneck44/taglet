@@ -96,7 +96,7 @@ textarea { min-height: 120px; resize: vertical; }
 .acct .field { grid-column: 1 / -1; }
 .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--border);
   padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
-.dock nav { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dock nav { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .dock button { all: unset; cursor: pointer; display: grid; justify-items: center; gap: 2px; padding: 6px 0; min-height: 44px; border-radius: var(--r-sm); font-size: 12px; font-weight: 600; color: var(--text-3); }
 .dock button[aria-current="page"] { color: var(--accent-text); }
 .dock button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -143,6 +143,14 @@ textarea { min-height: 120px; resize: vertical; }
     <section class="list" id="list" aria-live="polite"></section>
   </main>
 
+  <main id="planView" class="wrap" hidden>
+    <section class="sec"><h1>Plan</h1><p class="state">Who Taglet is for, which Reddit communities fit, and what the routines are doing. Edit nothing here by hand: Claude keeps it current.</p></section>
+    <section class="sec"><h2>Use cases</h2><div class="list" id="planUse"></div></section>
+    <section class="sec"><h2>Reddit communities</h2><div class="list" id="planComm"></div></section>
+    <section class="sec"><h2>Notes</h2><div class="list" id="planNotes"></div></section>
+    <section class="sec"><h2>Schedule</h2><div class="card"><p class="small">8:55 AM drafts Reddit replies (up to 3). 11:20 AM, 3:20 PM and 7:20 PM each post one approved Reddit reply. 6:41 PM posts approved videos and one Pinterest pin. 9:20 AM checks whether there is something new to say on LinkedIn (every five days, skipped if nothing changed). Videos: one a day, Nov 12 to 18, rendered on the Mac.</p></div></section>
+  </main>
+
   <main id="acctView" class="wrap" hidden>
     <section class="sec"><h1>Accounts</h1><p class="state">Tick each one once it's created and connected in Composio, and note its handle. Claude reads this list before posting, so Taglet posts never go out through the Any Day Now accounts.</p></section>
     <section class="list" id="acctList"></section>
@@ -152,6 +160,7 @@ textarea { min-height: 120px; resize: vertical; }
 <div class="dock"><nav aria-label="Sections">
   <button type="button" id="tabNumbers" aria-current="page"><svg class="svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15v-4M12 15V7M17 15v-6"/></svg>Numbers</button>
   <button type="button" id="tabQueue"><svg class="svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Queue</button>
+  <button type="button" id="tabPlan"><svg class="svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Plan</button>
   <button type="button" id="tabAcct"><svg class="svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Accounts</button>
 </nav></div>
 <div class="toast" id="toast" hidden role="status"></div>
@@ -343,14 +352,22 @@ async function save(k, patch) {
 
 /* ── Tabs: #numbers, #queue, #accounts ── */
 function go(view, push = true) {
-  const v = ["queue", "accounts"].includes(view) ? view : "numbers";
-  $("numbersView").hidden = v !== "numbers"; $("queueView").hidden = v !== "queue"; $("acctView").hidden = v !== "accounts";
-  for (const [id, name] of [["tabNumbers", "numbers"], ["tabQueue", "queue"], ["tabAcct", "accounts"]]) $(id).setAttribute("aria-current", v === name ? "page" : "false");
+  const v = ["queue", "accounts", "plan"].includes(view) ? view : "numbers";
+  $("numbersView").hidden = v !== "numbers"; $("queueView").hidden = v !== "queue"; $("acctView").hidden = v !== "accounts"; $("planView").hidden = v !== "plan";
+  for (const [id, name] of [["tabNumbers", "numbers"], ["tabQueue", "queue"], ["tabPlan", "plan"], ["tabAcct", "accounts"]]) $(id).setAttribute("aria-current", v === name ? "page" : "false");
   if (push) try { history.replaceState(null, "", "#" + v); } catch {}
   if (v === "queue") renderQueue(); if (v === "numbers") renderOutput();
   scrollTo(0, 0);
 }
-$("tabNumbers").onclick = () => go("numbers"); $("tabQueue").onclick = () => go("queue"); $("tabAcct").onclick = () => go("accounts");
+$("tabNumbers").onclick = () => go("numbers"); $("tabQueue").onclick = () => go("queue"); $("tabAcct").onclick = () => go("accounts"); $("tabPlan").onclick = () => go("plan");
+/* ── Plan: read-only, one doc per use case, community or note ── */
+function renderPlan(docs) {
+  const by = (k) => docs.filter((d) => d.kind === k).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const card = (d) => el("article", { className: "card" }, el("h3", { textContent: d.title || "" }), el("p", { className: "body", textContent: d.body || "" }));
+  $("planUse").replaceChildren(...by("usecase").map(card));
+  $("planComm").replaceChildren(...by("community").map(card));
+  $("planNotes").replaceChildren(...by("note").map(card));
+}
 
 renderNumbers(); renderOutput(); renderAccts();
 go(location.hash.slice(1), false);
@@ -362,6 +379,7 @@ go(location.hash.slice(1), false);
   if (!db) { $("state").textContent = "The queue can't load in this view. Open it from claude.ai to manage posts."; $("newBtn").disabled = true; return; }
   posts = db.collection("posts"); acctCol = db.collection("accounts");
   posts.onSnapshot((s) => { items = s.docs.map((d) => ({ id: d.id, ...d.data() })); $("state").hidden = true; renderQueue(); }, () => { $("state").hidden = false; $("state").textContent = "Lost the connection to the queue. Reload the page to reconnect."; });
+  db.collection("plan").onSnapshot((s) => renderPlan(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
   acctCol.onSnapshot((s) => { accts = Object.fromEntries(s.docs.map((d) => [d.id, d.data()])); if (!document.activeElement?.closest?.("#acctList")) renderAccts(); });
 })();
 </script>
