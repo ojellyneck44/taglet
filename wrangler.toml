@@ -6,6 +6,9 @@ workers_dev = true
 [vars]
 # Email codes stay hidden until taglet.net is verified for sending; set to "on" (or remove) and deploy.
 EMAIL_SENDING = "on"
+# Public OAuth client IDs (the matching secrets are Wrangler secrets).
+GITHUB_CLIENT_ID = "Ov23litlIRJcboqwfDp9"
+GOOGLE_CLIENT_ID = "969558642290-slpvrmrfh9l1pitr4imq9472lgfmqd2b.apps.googleusercontent.com"
 
 routes = [
   { pattern = "taglet.net", custom_domain = true },
