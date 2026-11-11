@@ -49,7 +49,10 @@ if (standalone) {
   document.documentElement.setAttribute("data-native", "");
   $('meta[name="viewport"]').setAttribute("content", "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover");
 }
-addEventListener("load", () => setTimeout(() => $("#splash").classList.add("done"), 250));
+// The splash stays until saved albums are back, so returning people never see the upload screen flash by.
+const loaded = new Promise((r) => addEventListener("load", r, { once: true }));
+const hideSplash = () => $("#splash").classList.add("done");
+setTimeout(hideSplash, 3000); // never stuck if storage hangs
 /** A light tap of feedback on Android; iOS has no vibration API for the web, so it's silent there. */
 const buzz = (ms = 8) => { try { if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(ms); } catch {} };
 
@@ -1554,7 +1557,7 @@ async function restore() {
     current.album = albums.has(state.current?.album) ? state.current.album : [...albums.keys()][0];
     current.track = tracks.has(state.current?.track) ? state.current.track : wide.matches || isSingle() ? albums.get(current.album).trackIds[0] : null;
     renderAll();
-    setView(wide.matches || albums.size === 1 ? "album" : "shelf");
+    setView(wide.matches ? "album" : "shelf");
   } catch {}
 }
 // ---------------------------------------------------------------- account sync
@@ -1601,7 +1604,7 @@ async function applyLibrary(remote, covers) {
   if (current.album && !current.track && (wide.matches || isSingle())) current.track = albums.get(current.album).trackIds[0] || null;
   renderAll();
   if (!albums.size) setView("welcome");
-  else if (document.body.dataset.view === "welcome") setView(wide.matches || albums.size === 1 ? "album" : "shelf");
+  else if (document.body.dataset.view === "welcome") setView(wide.matches ? "album" : "shelf");
   save();
 }
 
@@ -1621,6 +1624,7 @@ function renderSyncCard() { $("#syncCard").hidden = !accountAvailable() || syncC
 
 restore().finally(() => {
   restored = true;
+  loaded.then(() => setTimeout(hideSplash, 150));
   navigator.storage?.persist?.().catch(() => {});
   initAccount({ openSheet, toast, icon, getLibrary, applyLibrary, coverBlob: (id) => albums.get(id)?.art?.blob || null });
 });
