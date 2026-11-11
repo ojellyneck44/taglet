@@ -1,4 +1,19 @@
 import { loadEngine, probe, render } from "./engine.js";
+// Anonymous usage counts (/api/event). Never send file names, titles or anything personal.
+const ping = (name, detail = "") => { try { navigator.sendBeacon?.("/api/event", JSON.stringify({ name, detail })); } catch {} };
+{ // Once a day per browser: "new", or how long ago it first came (d1 = within a week, d8 = 8-30 days, d31 = later).
+  try {
+    const ref = new URLSearchParams(location.search).get("ref");
+    if (ref) ping("ref", ref);
+    const today = new Date().toISOString().slice(0, 10), first = localStorage.getItem("taglet.firstSeen");
+    if (localStorage.getItem("taglet.lastSeen") !== today) {
+      if (!first) localStorage.setItem("taglet.firstSeen", today);
+      localStorage.setItem("taglet.lastSeen", today);
+      const days = first ? (Date.parse(today) - Date.parse(first)) / 86400000 : 0;
+      ping("visit", !first ? "new" : days <= 7 ? "d1" : days <= 30 ? "d8" : "d31");
+    }
+  } catch {}
+}
 import { buildKey, fillBatch, joinArtists, safeName, splitArtists, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
 import { b64url, unb64url, newKeyBytes, importKey, seal, shareUrl } from "./sharekit.js";
@@ -158,6 +173,7 @@ async function addFiles(list, source = "", opts = {}) {
 }
 
 async function importAudio(audio, source, opts) {
+  ping("import", audio.length > 1 ? "many" : "one");
   if (document.body.dataset.view === "welcome") setView(wide.matches ? "album" : "shelf");
   const engine = $("#engine");
   engine.hidden = false;
@@ -1153,6 +1169,7 @@ async function runExport(mode) {
     }
   }
   const rebuilt = chosen.some((t) => t.build);
+  ping("export", mode === "zip" ? "zip" : "files");
   buzz(12);
   $("#exportDoneText").textContent = `${out.length} ${out.length === 1 ? "file" : "files"} ready${failed ? `, ${failed} failed` : ""}. ` +
     (rebuilt ? "For new builds, save over the old files in the same folder so Spotify keeps one copy of each song." : "Next, add them to Spotify’s Local Files.");
@@ -1451,7 +1468,7 @@ addEventListener("beforeinstallprompt", (e) => {
   const btn = $("#installSheet [data-act='install']");
   if (btn) btn.hidden = false;
 });
-addEventListener("appinstalled", () => { installEvent = null; showInstallHint(); $("#installSheet")?.close(); });
+addEventListener("appinstalled", () => { ping("install"); installEvent = null; showInstallHint(); $("#installSheet")?.close(); });
 
 function showInstallHint() {
   const el = $("#installHint");

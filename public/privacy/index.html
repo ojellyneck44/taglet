@@ -34,6 +34,7 @@
   <p>Link a device is the one feature that moves files over the internet, and only when you send something. The pairing code is turned into an encryption key on each device. Files are encrypted with AES-GCM before they leave, pass through a small relay on Cloudflare, and are decrypted on the other device. The relay sees only a scrambled room name and encrypted bytes. It can’t read them and stores nothing. The code is part of the QR link after the <strong>#</strong>, which browsers never send to a server.</p>
 
   <h2>Adding songs from a link</h2>
+  <p>Taglet counts how it is used, anonymously: a page was opened (new or returning browser, never who), a conversion was exported, an album was shared, a link was imported, someone installed the app or signed in. These counts are stored with Cloudflare Workers Analytics Engine, hold no cookies, IP addresses, file names, titles or emails, and are kept for three months. They exclude the maker’s own devices.</p>
   <p>When you paste a YouTube or SoundCloud link, the link (and nothing else of yours) goes to Taglet’s server on Cloudflare. The server fetches the audio and the song’s public title, artist and cover picture from that site, sends them straight back to you, and keeps no copy. Your IP address is counted toward a daily limit, and the count is deleted after the day ends. Only add songs you have the right to use.</p>
 
   <h2>Sharing a link</h2>
@@ -45,7 +46,7 @@
   <h2>What we don’t do</h2>
   <ul>
     <li>No account needed: everything works without one.</li>
-    <li>No analytics, tracking pixels, ads or third-party scripts.</li>
+    <li>No tracking cookies, tracking pixels or third-party scripts. Only the anonymous counts described above.</li>
     <li>No tracking, and no cookies unless you sign in (then one, to keep you signed in). Your albums, tags, covers and songs are saved in this browser’s storage (IndexedDB) on your device, so they’re still there next time. Deleting an album, or clearing the site’s data in your browser settings, removes them.</li>
   </ul>
 

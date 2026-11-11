@@ -1,0 +1,21 @@
+# Taglet
+
+> Free tool at https://taglet.net for tagging and converting your own music. Drop in WAV, FLAC, AIFF, ALAC, M4A, OGG, Opus, WMA or MP3 files, fix titles, artists, albums and cover art, and export 320 kbps MP3s that work with Spotify's Local Files. Conversion runs in the browser (ffmpeg compiled to WebAssembly), so files are not uploaded. Optional free accounts sync the library and audio between devices. Works as an installable web app on iPhone, Android and desktop.
+
+## Tool
+
+- [Taglet](https://taglet.net/): add songs, edit tags and covers, export a zip or single files
+- [Add finished files to Spotify](https://taglet.net/spotify/): turning on Local Files on Mac, PC, iPhone and Android
+
+## Guides
+
+Written and kept up to date by Stevie McLane, who makes Taglet (https://taglet.net/about/).
+
+- [How to convert FLAC to MP3](https://taglet.net/guides/flac-to-mp3/)
+- [How to convert WAV to MP3 (and add tags)](https://taglet.net/guides/wav-to-mp3/)
+- [How to fix MP3 tags](https://taglet.net/guides/fix-mp3-tags/)
+- [How to add album cover art to MP3 files](https://taglet.net/guides/add-cover-art/)
+
+## About
+
+- [About](https://taglet.net/about/), [Contact](https://taglet.net/contact/), [Privacy](https://taglet.net/privacy/), [Terms](https://taglet.net/terms/)

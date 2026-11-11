@@ -5,6 +5,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 import * as auth from "./auth.js";
+import { logEvent, TEAM_COOKIE } from "./events.js";
 
 const SHARE_TTL = 30 * 24 * 60 * 60; // seconds
 const MAX_PART = 24 * 1024 * 1024; // KV values top out at 25 MiB
@@ -50,6 +51,7 @@ async function fetchLink(req, env, url) {
     return tooMany(`You’ve looked up ${LIMITS.lookups} links today, which is the daily limit. Try again tomorrow.`);
   if (what === "audio" && (!(await take(env, `fetches:${ip}`, 1, LIMITS.fetches)) || !(await take(env, "fetches", 1, LIMITS.fetchAll))))
     return tooMany(`That’s the daily limit for songs from links. Try again tomorrow, or add the files themselves.`);
+  if (what === "audio") logEvent(env, req, "link_import", host.includes("soundcloud") ? "soundcloud" : "youtube");
   return getContainer(env.FETCHER).fetch(new Request(`http://fetcher/${what}?url=${encodeURIComponent(target)}`));
 }
 
@@ -60,6 +62,15 @@ export default {
     if (m) {
       if (req.headers.get("Upgrade") !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
       return env.ROOMS.get(env.ROOMS.idFromName(m[1])).fetch(req);
+    }
+    if (url.pathname === "/api/event" && req.method === "POST") return event(req, env);
+    if (url.pathname === "/api/team" && req.method === "GET") {
+      // Open once in a browser to leave it out of the usage counts (?off=1 to count it again).
+      const off = url.searchParams.has("off");
+      const res = text(off ? "This browser counts in usage numbers again." : "This browser no longer counts in usage numbers.", 200);
+      res.headers.set("Cache-Control", "no-store");
+      res.headers.append("Set-Cookie", `${TEAM_COOKIE}=${off ? "; Max-Age=0" : "1; Max-Age=315360000"}; Path=/; Secure; HttpOnly; SameSite=Lax`);
+      return res;
     }
     if (url.pathname.startsWith("/api/share")) return share(req, env, url);
     const s = url.pathname.match(/^\/s\/([A-Za-z0-9]{12})\/?$/);
@@ -94,6 +105,7 @@ async function share(req, env, url) {
     if (!(await take(env, "writes", 1, LIMITS.writes))) return tooMany(BUSY);
     const newId = rand(12, "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789");
     const token = rand(32, "0123456789abcdef");
+    logEvent(env, req, "share_created");
     await env.SHARES.put(`s:${newId}:token`, await sha(token), { expirationTtl: SHARE_TTL });
     return Response.json({ id: newId, token });
   }
@@ -207,6 +219,7 @@ async function account(req, env, url) {
         if (origin && origin !== url.origin) return json({ error: "forbidden" }, 403);
         const size = +req.headers.get("content-length");
         await auth.putAudio(env, user, audio, req.body, size);
+        logEvent(env, req, "audio_synced");
         return new Response(null, { status: 204 });
       }
     }
@@ -227,6 +240,7 @@ async function account(req, env, url) {
     }
     if (route === "auth/email/verify") {
       const { user, setCookie } = await auth.emailVerify(env, body.email, body.code);
+      logEvent(env, req, "sign_in", "email");
       return withCookie(json({ user: auth.publicUser(user) }), setCookie);
     }
     if (route === "auth/logout") { await auth.signOut(env, req); return withCookie(json({ ok: true }), auth.clearCookie()); }
@@ -240,6 +254,16 @@ async function account(req, env, url) {
   } catch (e) {
     return json({ error: e?.error || "server_error" }, e?.status || 500);
   }
+}
+
+/** POST /api/event { name, detail } — counts from the browser for what the server can't see. Nothing personal is accepted. */
+const EVENTS = new Set(["visit", "export", "import", "page", "install", "ref"]);
+async function event(req, env) {
+  if (Number(req.headers.get("content-length") || 0) > 1024) return new Response(null, { status: 413 });
+  const body = await req.json().catch(() => null);
+  const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+  if (EVENTS.has(body?.name) && (await take(env, `events:${ip}`, 1, 300))) logEvent(env, req, body.name, String(body.detail || "").replace(/[^a-z0-9_-]/gi, ""));
+  return new Response(null, { status: 204 });
 }
 
 /** One counter per scope per day. It deletes itself a day later, so nothing about anyone is kept. */

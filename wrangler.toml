@@ -43,6 +43,11 @@ new_sqlite_classes = ["Quota"]
 binding = "SHARES"
 id = "c5f53ef5266443ed9a7077a650e73892"
 
+# Anonymous usage counts (visits, exports, shares, link imports, sign-ins). Query with SQL: see docs/analytics.md.
+[[analytics_engine_datasets]]
+binding = "EVENTS"
+dataset = "taglet_events"
+
 # Signed-in users' audio, so a song plays on every device (1 GB per account, 8 GB in all, so R2's free 10 GB is never exceeded).
 [[r2_buckets]]
 binding = "AUDIO"

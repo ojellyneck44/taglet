@@ -14,3 +14,5 @@ if (matchMedia("(display-mode: standalone)").matches || navigator.standalone ===
   document.documentElement.setAttribute("data-native", "");
   document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover");
 }
+// Anonymous page counts (the reader's own device is never identified); which guides get read.
+try { navigator.sendBeacon?.("/api/event", JSON.stringify({ name: "page", detail: location.pathname.replace(/^\/|\/$/g, "").replace(/\//g, "-") || "home" })); } catch {}
