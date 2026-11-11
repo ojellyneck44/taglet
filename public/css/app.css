@@ -395,3 +395,45 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 44px; }
   .art img:not([hidden]) ~ .art-edit { display: grid; }
   .track:active, .shelf-item:active, .row-link:active { background: rgba(243,236,226,.08); }
 }
+
+/* ---------- album tools ---------- */
+.tracks-tools { display: flex; gap: var(--s2); flex-wrap: wrap; justify-content: flex-end; }
+.album-tools { margin-top: var(--s4); }
+
+/* ---------- playback: the selected row's highlight doubles as the progress bar ---------- */
+.track[aria-current="true"] {
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--accent) 30%, transparent) var(--play, 0%), transparent var(--play, 0%)),
+    var(--accent-soft);
+}
+
+/* ---------- single: one song, so everything says "track" and there's no album-only UI ---------- */
+body[data-single] .album-title,
+body[data-single] .field:has([data-album="albumArtist"]),
+body[data-single] .switch:has([data-album="compilation"]),
+body[data-single] .tracks-head,
+body[data-single] .tracks,
+body[data-single] .field:has([data-track="track"]),
+body[data-single] .field:has([data-track="disc"]),
+body[data-single] [data-act="artistsAll"],
+body[data-single] #inspMain > .back { display: none; }
+body[data-single] .album-head { margin-bottom: 0; }
+@media (max-width: 899px) {
+  /* On a phone the single's cover and its track fields share one screen. */
+  body[data-single][data-view="album"] .inspector { display: block; padding-top: 0; }
+  body[data-single][data-view="album"] .album { padding-bottom: 0; }
+}
+body[data-single] .album-head { grid-template-columns: minmax(0, 1fr); gap: var(--s6); }
+body[data-single] .art-wrap { width: min(280px, 100%); }
+body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under the cover does this */
+@media (max-width: 899px) {
+  /* Phone single: cover, then the track's title and artists, then release details and Delete. */
+  body[data-single][data-view="album"] .workspace { display: flex; flex-direction: column; padding-inline: var(--s4); }
+  body[data-single][data-view="album"] :is(.album, .album-head, .album-fields) { display: contents; }
+  body[data-single][data-view="album"] .album > .back { order: 0; align-self: flex-start; }
+  body[data-single][data-view="album"] .art-wrap { order: 1; margin: var(--s2) auto var(--s5); }
+  body[data-single][data-view="album"] .inspector { order: 2; padding: 0; }
+  body[data-single][data-view="album"] .album-fields > * { order: 3; }
+  body[data-single][data-view="album"] .album-tools { order: 4; margin-bottom: var(--s6); }
+  body[data-single][data-view="album"] #inspMain .pane-head { display: none; }
+}

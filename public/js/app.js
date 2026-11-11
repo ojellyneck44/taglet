@@ -74,6 +74,7 @@ let lastExports = [];
 // ---------------------------------------------------------------- views
 
 function setView(view, dir = 1) {
+  if (view === "track" && isSingle()) view = "album";
   const apply = () => {
     document.body.dataset.view = view;
     $("#welcome").hidden = view !== "welcome";
@@ -97,7 +98,8 @@ const showAlbum = (id, dir = 1) => { selectAlbum(id); setView("album", dir); };
 
 // ---------------------------------------------------------------- import
 
-/** opts.target: a track id whose audio the (single) file should replace, from the "New build" button. */
+/** opts.target: a track id whose audio the (single) file should replace, from the "New build" button.
+ *  opts.into: an album id to add the songs to, whatever their own album tags say. */
 async function addFiles(list, source = "", opts = {}) {
   const files = [...list];
   const images = files.filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|heic|avif)$/i.test(f.name));
@@ -108,6 +110,11 @@ async function addFiles(list, source = "", opts = {}) {
     else { pendingArt = images[0]; toast(`Got ${images[0].name}${source}. It becomes the cover of the next album you add.`); }
   }
   if (!audio.length) return;
+  busy++;
+  try { await importAudio(audio, source, opts); } finally { busy--; maybeReload(); }
+}
+
+async function importAudio(audio, source, opts) {
   if (document.body.dataset.view === "welcome") setView(wide.matches ? "album" : "shelf");
   const engine = $("#engine");
   engine.hidden = false;
@@ -134,7 +141,7 @@ async function addFiles(list, source = "", opts = {}) {
       if (target) { builds.push({ file, info, target: target.id }); continue; }
       const t = newTrack(file, info);
       addedNow.add(t.id);
-      const album = placeTrack(t, info, batch);
+      const album = placeTrack(t, info, batch, opts.into);
       touched.add(album.id);
       if (!current.album) current.album = album.id;
       renderShelf();
@@ -148,7 +155,7 @@ async function addFiles(list, source = "", opts = {}) {
   if (builds.length) {
     const picks = await askBuilds(builds);
     for (const b of builds) {
-      if (picks === "new") { const t = newTrack(b.file, b.info); addedNow.add(t.id); touched.add(placeTrack(t, b.info, batch).id); continue; }
+      if (picks === "new") { const t = newTrack(b.file, b.info); addedNow.add(t.id); touched.add(placeTrack(t, b.info, batch, opts.into).id); continue; }
       if (!(picks instanceof Map) || !picks.has(b)) continue; // closed, or left unticked: nothing changes
       const t = tracks.get(picks.get(b));
       replaced.push([t, replaceAudio(t, b.file, b.info)]);
@@ -159,7 +166,8 @@ async function addFiles(list, source = "", opts = {}) {
   if (batch.loose?.trackIds.length === 1 && !batch.loose.title) batch.loose.title = tracks.get(batch.loose.trackIds[0]).tags.title;
   for (const id of touched) tidyAlbum(albums.get(id));
   if (!current.album && albums.size) current.album = [...albums.keys()][0];
-  if (wide.matches && !current.track && current.album) current.track = albums.get(current.album).trackIds[0] || null;
+  if (opts.into && albums.has(opts.into)) current.album = opts.into;
+  if ((wide.matches || isSingle()) && !current.track && current.album) current.track = albums.get(current.album).trackIds[0] || null;
   renderAll();
   if (!wide.matches && albums.size === 1 && document.body.dataset.view === "shelf") setView("album"); // skip a one-item list
   const added = addedNow.size;
@@ -169,12 +177,16 @@ async function addFiles(list, source = "", opts = {}) {
       label: "Undo",
       run: () => { for (const [t, prev] of replaced) Object.assign(t, prev); renderAll(); },
     });
-  } else if (added || touched.size) { buzz(); toast(`${added === 1 ? "1 song" : `${added} songs`} added${source}${touched.size > 1 ? ` into ${touched.size} albums` : ""}.`); }
+  } else if (added || touched.size) {
+    buzz();
+    const into = opts.into && albums.get(opts.into);
+    toast(`${added === 1 ? "1 song" : `${added} songs`} added${source}${into ? ` to “${into.title || "this album"}”` : touched.size > 1 ? ` into ${touched.size} albums` : ""}.`);
+  }
 }
 let retryFiles = null;
 
 function newTrack(file, info) {
-  const t = { id: uid(), file, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
+  const t = { id: uid(), fileId: uid(), file, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
   tracks.set(t.id, t);
   return t;
 }
@@ -190,8 +202,8 @@ function findBuild(file, info, skip) {
 
 /** Swap in new audio, keep every tag, the cover and the album position. Returns what's needed to undo. */
 function replaceAudio(t, file, info) {
-  const prev = { file: t.file, codec: t.codec, sampleRate: t.sampleRate, duration: t.duration, build: t.build };
-  Object.assign(t, { file, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, build: (t.build || 1) + 1 });
+  const prev = { file: t.file, fileId: t.fileId, codec: t.codec, sampleRate: t.sampleRate, duration: t.duration, build: t.build };
+  Object.assign(t, { file, fileId: uid(), codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, build: (t.build || 1) + 1 });
   const a = albums.get(t.albumId);
   if (!a.art && info.art) setArt(a, info.art);
   const p = $("#player");
@@ -228,7 +240,15 @@ function askBuilds(builds) {
   });
 }
 
-function placeTrack(t, info, batch) {
+function placeTrack(t, info, batch, into) {
+  if (into && albums.has(into)) {
+    // Added to the open album on purpose: it takes the next numbers rather than its old album's.
+    const album = albums.get(into);
+    t.tags.track = 0; t.tags.disc = 0;
+    t.albumId = album.id;
+    album.trackIds.push(t.id);
+    return album;
+  }
   const title = info.tags.album.trim();
   const artist = (info.tags.albumArtist || "").trim();
   const k = (s) => s.toLowerCase();
@@ -271,9 +291,19 @@ function mostCommonArtist(a) {
 
 // ---------------------------------------------------------------- spotify check
 
+const singleAlbum = (a) => a?.trackIds.length === 1;
+const isSingle = () => singleAlbum(albums.get(current.album));
+
 function checkAlbum(a) {
   const issues = [];
   const list = a.trackIds.map((id) => tracks.get(id));
+  if (singleAlbum(a)) {
+    const t = list[0];
+    if (!t.tags.title.trim()) issues.push({ text: "Give the track a title." });
+    if (!t.tags.artists.some((x) => x.trim())) issues.push({ text: "Add the artist, so Spotify can show who it’s by." });
+    if (!a.art) issues.push({ text: "No cover art yet. Add one so the track has a picture in Spotify.", fix: "Add", act: "art" });
+    return { issues, soft: !a.year ? ["No year. Optional, but it keeps things tidy in other players."] : [] };
+  }
   if (!a.title.trim()) issues.push({ text: "Give the album a title." });
   if (!a.albumArtist.trim()) issues.push({ text: "Add an album artist, or Spotify may split tracks with guests into separate albums.", fix: "Fill in", act: "fixArtist" });
   const seen = new Set();
@@ -293,11 +323,14 @@ function renderShelf() {
     const ok = !checkAlbum(a).issues.length;
     return `<li><button class="shelf-item" type="button" data-album-id="${a.id}" aria-current="${a.id === current.album}">
       ${a.art ? `<img class="thumb" src="${a.art.url}" alt="">` : `<span class="thumb">${icon("image")}</span>`}
-      <span><strong>${esc(a.title || "Untitled album")}</strong><small>${esc(a.albumArtist || "No album artist")} · ${a.trackIds.length} ${a.trackIds.length === 1 ? "track" : "tracks"}</small></span>
+      ${singleAlbum(a)
+        ? `<span><strong>${esc(tracks.get(a.trackIds[0]).tags.title || "Untitled track")}</strong><small>Single · ${esc(joinArtists(tracks.get(a.trackIds[0]).tags.artists) || "No artist")}</small></span>`
+        : `<span><strong>${esc(a.title || "Untitled album")}</strong><small>${esc(a.albumArtist || "No album artist")} · ${a.trackIds.length} tracks</small></span>`}
       <span class="dot ${ok ? "ok" : ""}" title="${ok ? "Ready for Spotify" : "Needs a fix"}"></span><span class="sr-only">${ok ? "Ready for Spotify" : "Needs a fix"}</span>
     </button></li>`;
   }).join("");
   updateExport();
+  save();
 }
 
 function renderAlbum() {
@@ -315,6 +348,10 @@ function renderAlbum() {
   setAmbient(a.art?.url);
   renderTracks(a);
   renderCheck(a);
+  const single = singleAlbum(a);
+  document.body.toggleAttribute("data-single", single);
+  $("#deleteLabel").textContent = single ? "Delete track" : "Delete album";
+  $("#artBtn").setAttribute("aria-label", single ? "Change the track’s cover art" : "Change the album’s cover art");
   $("#backToAlbum").textContent = a.title || "Album";
 }
 
@@ -340,6 +377,7 @@ function renderCheck(a) {
   tag.classList.toggle("warn", !ready);
   if (lastReady !== null && lastReady !== ready) { swing(tag, ready ? 14 : 8); if (ready) buzz(10); }
   lastReady = ready;
+  save();
   $("#issues").innerHTML = [
     ...issues.map((i) => `<li>${icon("alert")}<span>${esc(i.text)}</span>${i.fix ? `<button class="btn ghost small" type="button" data-fix="${i.act}">${i.fix}</button>` : ""}</li>`),
     ...soft.map((s) => `<li class="ok">${icon("alert")}<span>${esc(s)}</span></li>`),
@@ -356,12 +394,10 @@ function renderInspector() {
   $("#inspFile").textContent = `${t.file.name}${t.build ? ` · build ${t.build}` : ""}`;
   $("#inspFile").title = `${t.codec.toUpperCase()} · ${(t.sampleRate / 1000).toFixed(1)} kHz`;
   renderArtists(t);
-  const sel = $("#moveAlbum");
-  sel.innerHTML = [...albums.values()].map((a) => `<option value="${a.id}" ${a.id === t.albumId ? "selected" : ""}>${esc(a.title || "Untitled album")}</option>`).join("") + `<option value="__new">New album from this song</option>`;
   const others = ["composer", "bpm", "isrc", "publisher", "copyright", "comment", "lyrics"].filter((k) => String(t.tags[k] || "").trim());
   $("#otherSummary").textContent = others.length ? `${others.length} filled: ${others.join(", ")}` : "Composer, lyrics, BPM, ISRC…";
   const p = $("#player");
-  if (p.dataset.track !== t.id) { p.pause(); p.removeAttribute("src"); p.dataset.track = t.id; setPlayButton(false); }
+  if (p.dataset.track !== t.id) { p.pause(); p.removeAttribute("src"); p.dataset.track = t.id; setPlayButton(false); $$(".track").forEach((r) => r.style.removeProperty("--play")); }
 }
 
 function renderArtists(t, focusIndex) {
@@ -374,7 +410,7 @@ function renderArtists(t, focusIndex) {
   if (focusIndex !== undefined) $(`[data-artist="${focusIndex}"]`)?.focus();
 }
 
-function selectAlbum(id) { current.album = id; current.track = wide.matches ? albums.get(id)?.trackIds[0] || null : null; renderShelf(); renderAlbum(); renderInspector(); }
+function selectAlbum(id) { current.album = id; current.track = wide.matches || isSingle() ? albums.get(id)?.trackIds[0] || null : null; renderShelf(); renderAlbum(); renderInspector(); }
 function selectTrack(id) { current.track = id; $$(".track").forEach((li) => li.setAttribute("aria-current", li.dataset.trackId === id)); renderInspector(); setView("track"); }
 
 function setAmbient(url) {
@@ -400,37 +436,21 @@ document.addEventListener("input", (e) => {
     if (key === "title") $("#backToAlbum").textContent = a.title || "Album";
   } else if (el.dataset.track && t) {
     const key = el.dataset.track;
+    if (key === "title" && singleAlbum(a) && (!a.title || a.title === t.tags.title)) a.title = el.value;
     if (key === "track" || key === "disc") { t.tags[key] = parseInt(el.value, 10) || 0; }
     else t.tags[key] = el.value;
     if (key === "track" || key === "disc") { renderTracks(a); renderCheck(a); }
     else if (key === "title") { const row = $(`.track[data-track-id="${t.id}"] strong`); if (row) row.textContent = t.tags.title || "Untitled"; }
   } else if (el.dataset.artist !== undefined && t) {
     const list = t.tags.artists.length ? [...t.tags.artists] : [""];
+    if (+el.dataset.artist === 0 && singleAlbum(a) && (!a.albumArtist || a.albumArtist === list[0])) a.albumArtist = el.value;
     list[+el.dataset.artist] = el.value;
     t.tags.artists = list;
     $("#artistPreview").textContent = joinArtists(list) || "no artist";
     const row = $(`.track[data-track-id="${t.id}"] small`); if (row) row.textContent = joinArtists(list) || "No artist";
   }
-});
-
-document.addEventListener("change", (e) => {
-  if (e.target.id === "moveAlbum") {
-    const t = tracks.get(current.track);
-    if (!t) return;
-    const from = albums.get(t.albumId);
-    let to;
-    if (e.target.value === "__new") {
-      to = { id: uid(), title: t.tags.title, albumArtist: t.tags.artists[0] || "", year: from.year, genre: from.genre, compilation: false, art: from.art, trackIds: [] };
-      albums.set(to.id, to);
-    } else to = albums.get(e.target.value);
-    from.trackIds = from.trackIds.filter((id) => id !== t.id);
-    to.trackIds.push(t.id);
-    t.albumId = to.id;
-    if (!from.trackIds.length) albums.delete(from.id);
-    current.album = to.id;
-    renderAll();
-    toast(`Moved to “${to.title}”.`);
-  }
+  if (singleAlbum(a)) { renderCheck(a); renderShelf(); }
+  save();
 });
 
 document.addEventListener("keydown", (e) => {
@@ -450,13 +470,36 @@ document.addEventListener("keydown", (e) => {
     $(`.track[data-track-id="${id}"] .grip`).focus();
     toast("Order changed. Tap “Number in this order” to renumber.");
   }
+  if ((e.key === "Delete" || e.key === "Backspace") && el.classList?.contains("shelf-item")) { e.preventDefault(); current.album = el.dataset.albumId; actions.deleteAlbum(); return; }
   if (e.key === "Escape") { $("#tintMenu").hidden = true; $('[data-act="tint"]').setAttribute("aria-expanded", "false"); }
 });
 
 // ---------------------------------------------------------------- clicks
 
 const actions = {
-  pick: () => $("#pickAudio").click(),
+  pick: () => { pickInto = null; $("#pickAudio").click(); },
+  addToAlbum: () => { pickInto = current.album; $("#pickAudio").click(); },
+  deleteAlbum: () => {
+    const a = albums.get(current.album);
+    if (!a) return;
+    const gone = a.trackIds.map((id) => tracks.get(id));
+    const at = [...albums.keys()].indexOf(a.id);
+    const name = singleAlbum(a) ? gone[0].tags.title || "Untitled track" : a.title || "Untitled album";
+    for (const t of gone) tracks.delete(t.id);
+    albums.delete(a.id);
+    current.album = [...albums.keys()][Math.min(at, albums.size - 1)] || null;
+    current.track = null;
+    if (current.album && (wide.matches || isSingle())) current.track = albums.get(current.album).trackIds[0];
+    renderAll();
+    setView(!albums.size ? "welcome" : wide.matches ? "album" : "shelf", -1);
+    toast(`Deleted “${name}”.`, "", { label: "Undo", run: () => {
+      const order = [...albums.entries()]; order.splice(at, 0, [a.id, a]);
+      albums.clear(); for (const [k, v] of order) albums.set(k, v);
+      for (const t of gone) tracks.set(t.id, t);
+      current.album = a.id; current.track = wide.matches || singleAlbum(a) ? a.trackIds[0] : null;
+      renderAll(); setView("album");
+    } });
+  },
   link: () => openLink(),
   export: () => openExport(),
   renumber: () => {
@@ -487,7 +530,7 @@ const actions = {
     const p = $("#player"), t = tracks.get(current.track);
     if (!p.paused) { p.pause(); return; }
     if (!p.src) p.src = URL.createObjectURL(t.file);
-    try { await p.play(); } catch { toast(`This browser can’t play ${t.codec.toUpperCase()} files directly. It still converts fine.`); }
+    try { await p.play(); } catch { toast(`This browser can’t play ${(t.file.name.match(/\.(\w+)$/)?.[1] || t.codec).toUpperCase()} files directly. It still converts fine.`); }
   },
   pickArt: () => $("#pickImage").click(),
   replaceAudio: () => $("#pickBuild").click(),
@@ -534,7 +577,8 @@ document.addEventListener("click", (e) => {
 
 $("#localChip").addEventListener("click", () => { const tip = $("#localTip"); tip.classList.toggle("show"); setTimeout(() => tip.classList.remove("show"), 5000); });
 
-$("#pickAudio").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+let pickInto = null;
+$("#pickAudio").addEventListener("change", (e) => { const into = pickInto; pickInto = null; addFiles(e.target.files, "", { into }); e.target.value = ""; });
 $("#pickImage").addEventListener("change", (e) => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
@@ -546,8 +590,15 @@ $("#pickSend").addEventListener("change", (e) => { sendFiles([...e.target.files]
 
 const player = $("#player");
 const setPlayButton = (playing) => { const b = $('[data-act="preview"]'); b.innerHTML = `${icon(playing ? "pause" : "play")}<span>${playing ? "Pause" : "Play"}</span>`; };
-player.addEventListener("play", () => setPlayButton(true));
-player.addEventListener("pause", () => setPlayButton(false));
+let playRaf = 0;
+function tickPlay() {
+  const row = $(`.track[data-track-id="${player.dataset.track}"]`);
+  if (row && player.duration) row.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
+  playRaf = player.paused ? 0 : requestAnimationFrame(tickPlay);
+}
+player.addEventListener("play", () => { setPlayButton(true); cancelAnimationFrame(playRaf); tickPlay(); });
+player.addEventListener("pause", () => { setPlayButton(false); tickPlay(); });
+player.addEventListener("ended", () => { $(`.track[data-track-id="${player.dataset.track}"]`)?.style.removeProperty("--play"); });
 
 // ---------------------------------------------------------------- reorder by dragging the grip
 
@@ -599,13 +650,18 @@ addEventListener("drop", (e) => {
   const files = [...e.dataTransfer.files];
   if (e.target.closest?.("#artBtn") && files[0].type.startsWith("image/")) { openCrop(files[0], albums.get(current.album)); return; }
   if (e.target.closest?.(".drop-send")) { sendFiles(files); return; }
-  addFiles(files);
+  addFiles(files, "", { into: openAlbumFor(e.target) });
 });
 addEventListener("paste", (e) => {
   if (e.target.closest?.("input, textarea")) return;
   const f = [...(e.clipboardData?.files || [])];
-  if (f.length) { e.preventDefault(); addFiles(f, " from the clipboard"); }
+  if (f.length) { e.preventDefault(); addFiles(f, " from the clipboard", { into: openAlbumFor(document.activeElement) }); }
 });
+/** The album on screen, if the drop landed on it: anywhere but the welcome screen and the album list. */
+function openAlbumFor(target) {
+  if (document.body.dataset.view === "welcome" || document.body.dataset.view === "shelf" || target?.closest?.("#shelf")) return null;
+  return albums.has(current.album) ? current.album : null;
+}
 
 // ---------------------------------------------------------------- cover art
 
@@ -735,27 +791,51 @@ const isTouch = matchMedia("(pointer: coarse)").matches;
 function openExport() {
   if (!tracks.size) return;
   const a = albums.get(current.album);
-  $("#scopeAlbum").textContent = a ? `“${a.title || "Untitled"}” (${a.trackIds.length})` : "This album";
-  $("#scopeAll").textContent = `Everything (${tracks.size} in ${albums.size} ${albums.size === 1 ? "album" : "albums"})`;
+  const single = singleAlbum(a);
+  // A single exports as its own MP3; an album defaults to "this album", with "everything" only when there's more.
+  $("#scope").hidden = single || albums.size < 2;
+  $('input[name="scope"][value="album"]').checked = true;
+  $("#scopeAlbum").textContent = a ? `${a.trackIds.length} songs in “${a.title || "Untitled album"}”` : "This album";
+  $("#scopeAll").textContent = `Everything: ${tracks.size} songs in ${albums.size} albums`;
+  $("#exportTitle").textContent = single ? "Export track" : "Export for Spotify";
   $("#exportSetup").hidden = false; $("#exportActions").hidden = false; $("#exportList").hidden = true; $("#exportDone").hidden = true;
-  $('[data-act="exportEach"]').textContent = isTouch && navigator.canShare ? "Save to Files" : "Save one by one";
+  $('[data-act="exportZip"]').hidden = single;
+  const each = $('[data-act="exportEach"]');
+  each.textContent = isTouch && navigator.canShare ? "Save to Files" : single ? "Save MP3" : "Save one by one";
+  each.className = `btn ${single ? "primary" : "ghost"}`;
+  trimNote();
   openSheet($("#exportDialog"));
 }
+
+/** What trimming costs for the songs about to be exported: only MP3 sources lose anything, because they get encoded twice. */
+function trimNote() {
+  const a = albums.get(current.album);
+  const scopeAll = $('input[name="scope"][value="all"]').checked && !$("#scope").hidden;
+  const list = scopeAll ? [...tracks.values()] : a.trackIds.map((id) => tracks.get(id));
+  const mp3s = list.filter((t) => t.codec === "mp3").length;
+  $("#trimNote").textContent = !mp3s
+    ? "None of these are MP3s, so trimming costs nothing: they’re encoded once either way."
+    : `${mp3s === list.length ? (list.length === 1 ? "This is an MP3" : "These are all MP3s") : `${mp3s} of these are MP3s`}, so with trimming on ${mp3s === 1 ? "it’s" : "they’re"} encoded a second time instead of only re-tagged. A second 320 kbps pass is very hard to hear, but it isn’t lossless.`;
+}
+document.addEventListener("change", (e) => { if (e.target.name === "scope") trimNote(); });
 
 function tagsFor(t) {
   const a = albums.get(t.albumId);
   const list = a.trackIds.map((id) => tracks.get(id));
   const disc = t.tags.disc || 1;
   const discTotal = Math.max(1, ...list.map((x) => x.tags.disc || 1));
+  const single = singleAlbum(a);
   return {
-    ...t.tags, album: a.title, albumArtist: a.albumArtist, year: a.year, genre: a.genre, compilation: a.compilation,
+    ...t.tags, album: a.title || (single ? t.tags.title : ""), albumArtist: a.albumArtist || (single ? t.tags.artists[0] || "" : ""),
+    year: a.year, genre: a.genre, compilation: a.compilation,
     artists: t.tags.artists.filter((x) => x.trim()),
     trackTotal: list.filter((x) => (x.tags.disc || 1) === disc).length, disc, discTotal,
   };
 }
 
 async function runExport(mode) {
-  const scope = $('input[name="scope"]:checked').value;
+  const scope = $("#scope").hidden ? "album" : $('input[name="scope"]:checked').value;
+  busy++;
   const opts = { quality: $('input[name="quality"]:checked').value, trimSilence: $("#trimSilence").checked };
   const chosen = scope === "album" && current.album ? albums.get(current.album).trackIds.map((id) => tracks.get(id)) : [...albums.values()].flatMap((a) => a.trackIds.map((id) => tracks.get(id)));
   for (const a of new Set(chosen.map((t) => albums.get(t.albumId)))) {
@@ -785,9 +865,12 @@ async function runExport(mode) {
     }
   }
   lastExports = out;
+  busy--; maybeReload();
   if (!out.length) { $("#exportDoneText").textContent = "Nothing could be converted. The errors are listed above."; $("#exportDone").hidden = false; return; }
   if (mode === "zip") {
-    const label = scope === "album" ? out[0].name.split("/")[0] : "Taglet export";
+    // Named after the album(s) the person entered.
+    const names = [...new Set(chosen.map((t) => albums.get(t.albumId).title || "Untitled album"))];
+    const label = safeName(names.length <= 2 ? names.join(" + ") : `${names[0]} and ${names.length - 1} more`);
     download(new Blob(zipParts(out), { type: "application/zip" }), `${label}.zip`);
   } else {
     const files = out.map((x) => new File([x.bytes], x.name.split("/").pop(), { type: "audio/mpeg" }));
@@ -986,7 +1069,73 @@ function installPrompt() {
 // ---------------------------------------------------------------- boot
 
 wide.addEventListener("change", () => { if (document.body.dataset.view !== "welcome") setView(wide.matches ? "album" : "album"); });
-addEventListener("beforeunload", (e) => { if (tracks.size) e.preventDefault(); });
+
+// ---------------------------------------------------------------- saved on this device
+
+// Albums, tags, covers and the audio itself live in IndexedDB, so they're still here next visit (no account needed).
+// Audio files are stored once per file and removed when nothing points at them any more.
+const openDb = (() => {
+  let p;
+  return () => (p ||= new Promise((res, rej) => {
+    const r = indexedDB.open("taglet", 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("kv"); r.result.createObjectStore("files"); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+})();
+async function idb(store, mode, fn) {
+  const d = await openDb();
+  return new Promise((res, rej) => {
+    const tx = d.transaction(store, mode);
+    const req = fn(tx.objectStore(store));
+    tx.oncomplete = () => res(req?.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+let saveTimer = 0, restored = false;
+function save() { if (!restored) return; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
+async function saveNow() {
+  try {
+    await idb("kv", "readwrite", (s) => s.put({
+      v: 1, current: { ...current },
+      albums: [...albums.values()].map((a) => ({ ...a, art: a.art ? { blob: a.art.blob } : null })),
+      tracks: [...tracks.values()].map(({ file, ...t }) => t),
+    }, "state"));
+    const stored = await idb("files", "readonly", (s) => s.getAllKeys());
+    const want = new Set([...tracks.values()].map((t) => t.fileId));
+    await idb("files", "readwrite", (s) => {
+      for (const t of tracks.values()) if (!stored.includes(t.fileId)) s.put(t.file, t.fileId);
+      for (const k of stored) if (!want.has(k)) s.delete(k);
+    });
+  } catch { /* storage full or blocked (private mode): the session still works, it just won't be kept */ }
+}
+async function restore() {
+  try {
+    const state = await idb("kv", "readonly", (s) => s.get("state"));
+    if (!state?.tracks?.length) return;
+    const files = new Map();
+    await idb("files", "readonly", (s) => {
+      const r = s.openCursor();
+      r.onsuccess = () => { const c = r.result; if (c) { files.set(c.key, c.value); c.continue(); } };
+    });
+    for (const t of state.tracks) if (files.has(t.fileId)) tracks.set(t.id, { ...t, file: files.get(t.fileId) });
+    for (const a of state.albums) {
+      a.trackIds = a.trackIds.filter((id) => tracks.has(id));
+      if (!a.trackIds.length) continue;
+      const art = a.art?.blob;
+      a.art = null;
+      albums.set(a.id, a);
+      if (art) setArt(a, art);
+    }
+    if (!albums.size) return;
+    current.album = albums.has(state.current?.album) ? state.current.album : [...albums.keys()][0];
+    current.track = tracks.has(state.current?.track) ? state.current.track : wide.matches || isSingle() ? albums.get(current.album).trackIds[0] : null;
+    renderAll();
+    setView(wide.matches || albums.size === 1 ? "album" : "shelf");
+  } catch {}
+}
+restore().finally(() => { restored = true; navigator.storage?.persist?.().catch(() => {}); });
 
 {
   const m = location.hash.match(/link=([0-9A-Za-z-]{10,11})/);
@@ -994,8 +1143,25 @@ addEventListener("beforeunload", (e) => { if (tracks.size) e.preventDefault(); }
   else addEventListener("load", () => setTimeout(installPrompt, 700));
 }
 
+// Always run the newest build, the way Any Day Now does: re-check for a new service worker on every visit and
+// whenever the app comes back to the foreground, and reload once when a new one takes over. If songs are being
+// read or exported (or a device is linked), the reload waits until that's done; everything is saved anyway.
+let busy = 0, reloadPending = false;
+function maybeReload() {
+  if (!reloadPending || busy || link || $("dialog[open]")) return;
+  saveNow().finally(() => location.reload());
+}
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+    .then((reg) => {
+      const check = () => reg.update().catch(() => {});
+      addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { check(); maybeReload(); } });
+      setInterval(check, 30 * 60 * 1000);
+    })
+    .catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController) { reloadPending = true; maybeReload(); } });
+  document.addEventListener("close", maybeReload, true);
   if (new URLSearchParams(location.search).has("shared")) {
     history.replaceState(null, "", "/");
     caches.open("taglet-share").then(async (c) => {

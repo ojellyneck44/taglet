@@ -44,7 +44,7 @@
   <button class="local-chip" type="button" id="localChip" aria-describedby="localTip">
     <svg aria-hidden="true"><use href="#i-lock"/></svg><span>On this device</span>
   </button>
-  <div class="tip" id="localTip" role="tooltip">Your songs and art are read and converted inside this browser. Nothing is uploaded. Linking a device sends files end-to-end encrypted.</div>
+  <div class="tip" id="localTip" role="tooltip">Your songs and art are read and converted inside this browser, and your albums are kept in its storage on this device for next time. Nothing is uploaded. Linking a device sends files end-to-end encrypted.</div>
   <nav class="top-actions" aria-label="Actions">
     <button class="btn ghost" type="button" data-act="link"><svg aria-hidden="true"><use href="#i-link"/></svg><span>Link a device</span></button>
     <button class="btn ghost icon-only" type="button" data-act="tint" aria-label="More" aria-haspopup="true" aria-expanded="false" aria-controls="tintMenu"><svg aria-hidden="true"><use href="#i-dots"/></svg></button>
@@ -88,16 +88,16 @@
     <h1 class="sr-only">Taglet editor</h1>
     <nav class="shelf" id="shelf" aria-labelledby="shelfTitle">
       <div class="pane-head">
-        <h2 id="shelfTitle">Albums</h2>
+        <h2 id="shelfTitle">Your music</h2>
         <button class="btn ghost small" type="button" data-act="pick"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add songs</span></button>
       </div>
       <p class="engine" id="engine" hidden></p>
       <ul class="shelf-list" id="shelfList"></ul>
-      <p class="shelf-foot">Albums group by album name and album artist. To move a song, open it and pick another album. <a href="/spotify/">How to add finished files to Spotify</a></p>
+      <p class="shelf-foot">Songs group into albums by their album tags. To add songs to an album, open it and drop them in, or use Add songs. <a href="/spotify/">How to add finished files to Spotify</a></p>
     </nav>
 
     <section class="album" id="album" aria-labelledby="albumTitleLabel">
-      <button class="back" type="button" data-back="shelf"><svg aria-hidden="true"><use href="#i-back"/></svg><span>Albums</span></button>
+      <button class="back" type="button" data-back="shelf"><svg aria-hidden="true"><use href="#i-back"/></svg><span>Your music</span></button>
       <div class="album-head">
         <div class="art-wrap">
           <button class="art" type="button" id="artBtn" aria-label="Change cover art">
@@ -121,11 +121,15 @@
             <label class="switch"><input type="checkbox" data-album="compilation"><span class="knob" aria-hidden="true"></span><span>Compilation</span></label>
           </div>
           <ul class="issues" id="issues"></ul>
+          <div class="album-tools"><button class="btn ghost small danger" type="button" data-act="deleteAlbum"><svg aria-hidden="true"><use href="#i-trash"/></svg><span id="deleteLabel">Delete album</span></button></div>
         </div>
       </div>
       <div class="tracks-head">
         <h2 id="tracksTitle">Tracks</h2>
-        <button class="btn ghost small" type="button" data-act="renumber">Number in this order</button>
+        <div class="tracks-tools">
+          <button class="btn ghost small" type="button" data-act="renumber">Number in this order</button>
+          <button class="btn ghost small" type="button" data-act="addToAlbum"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add songs</span></button>
+        </div>
       </div>
       <ol class="tracks" id="tracks" aria-labelledby="tracksTitle"></ol>
     </section>
@@ -147,11 +151,7 @@
         <div class="field-row">
           <label class="field narrow"><span>Track</span><input data-track="track" inputmode="numeric" autocomplete="off"></label>
           <label class="field narrow"><span>Disc</span><input data-track="disc" inputmode="numeric" autocomplete="off"></label>
-          <div class="field"><label for="moveAlbum">Album</label>
-            <select id="moveAlbum" aria-describedby="moveHint"></select>
-          </div>
         </div>
-        <p class="hint" id="moveHint">Pick another album to move this song there.</p>
         <button class="row-link" type="button" data-go="other"><span><strong>Other tags</strong><span class="muted" id="otherSummary">Composer, lyrics, BPM, ISRC…</span></span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
         <div class="insp-foot">
           <button class="btn ghost small" type="button" data-act="preview"><svg aria-hidden="true"><use href="#i-play"/></svg><span>Play</span></button>
@@ -256,7 +256,7 @@
         <div class="seg-row"><label><input type="radio" name="quality" value="320" checked><span>MP3 320 kbps<small>Best Spotify can play</small></span></label>
         <label><input type="radio" name="quality" value="v0"><span>MP3 V0<small>Near-identical, smaller</small></span></label></div>
       </fieldset>
-      <label class="switch block"><input type="checkbox" id="trimSilence"><span class="knob" aria-hidden="true"></span><span><strong>Trim silent edges</strong><small>Cuts dead air at the start and end. MP3s are then re-encoded, which costs a little quality.</small></span></label>
+      <label class="switch block"><input type="checkbox" id="trimSilence"><span class="knob" aria-hidden="true"></span><span><strong>Trim silent edges</strong><small>Cuts true digital silence (quieter than −72 dB) from the very start and end. Music, fades and quiet intros are left alone. <span id="trimNote"></span></small></span></label>
       <p class="hint">Encoder delay and padding are always handled: other formats are decoded gap-free and every MP3 keeps its gapless header. MP3s you add are only re-tagged, never re-encoded, unless you trim.</p>
       <p class="why"><strong>Why MP3 and not WAV?</strong> Spotify plays WAV and FLAC on some computers but ignores their tags and art, and phones skip them. MP3 is the one format every Spotify app reads fully.</p>
     </div>
@@ -280,10 +280,10 @@
 
 <div class="dropveil" id="dropveil" aria-hidden="true"><p>Let go to add</p></div>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
-<input type="file" id="pickAudio" accept="audio/*,.flac,.wav,.aif,.aiff,.m4a,.alac,.ogg,.oga,.opus,.wma,.ape,.wv,.mp3" multiple hidden>
+<input type="file" id="pickAudio" accept=".mp3,.wav,.flac,.aif,.aiff,.m4a,.aac,.alac,.caf,.ogg,.oga,.opus,.wma,.ape,.wv" multiple hidden>
 <input type="file" id="pickImage" accept="image/*" hidden>
 <input type="file" id="pickSend" multiple hidden>
-<input type="file" id="pickBuild" accept="audio/*,.flac,.wav,.aif,.aiff,.m4a,.alac,.ogg,.oga,.opus,.wma,.ape,.wv,.mp3" hidden>
+<input type="file" id="pickBuild" accept=".mp3,.wav,.flac,.aif,.aiff,.m4a,.aac,.alac,.caf,.ogg,.oga,.opus,.wma,.ape,.wv" hidden>
 <datalist id="genres"><option>Alternative</option><option>Ambient</option><option>Classical</option><option>Country</option><option>Electronic</option><option>Folk</option><option>Hip-Hop</option><option>Indie</option><option>Jazz</option><option>Metal</option><option>Pop</option><option>R&amp;B</option><option>Rock</option><option>Soundtrack</option></datalist>
 
 

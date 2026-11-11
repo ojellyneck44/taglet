@@ -4,7 +4,7 @@
 
 It opens straight onto the upload screen. Drop in audio in nearly any format. Taglet gives you MP3s that Spotify reads properly: clean titles, a separate field for each artist (written as "X, Y, Z"), square cover art, and album fields kept identical across tracks so the album doesn't split. Nothing is uploaded. Decoding and encoding run in [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) on your device.
 
-Designed and built by Stevie McLane.
+Designed and built by Stevie McLane. Spotify is a trademark of Spotify AB; Taglet isn’t affiliated with or endorsed by Spotify.
 
 ## What it does
 
@@ -16,6 +16,8 @@ Designed and built by Stevie McLane.
 - **Exports** one file at a time (on phones, through the share sheet so you can "Save to Files") or as a zip with one folder per album.
 - **Link a device**: pair two browsers with a QR code or a 10-character code and send songs or images either way, end-to-end encrypted. The relay only sees ciphertext.
 - **New builds**: drop an updated render of a song you've already tagged (say `Night Drive v3 final.wav`) and Taglet matches it to the existing track by file name or title. You confirm, or pick a different track, before anything is replaced. The new audio keeps the track's title, artists, number, album and cover, so the re-export has the same name and tags and replaces the old file in Spotify instead of adding a duplicate. Each song's inspector also has a manual "New build" button, and every replacement can be undone.
+- **Saved on the device**: albums, tags, covers and audio are kept in IndexedDB, so they're still there next visit. There are no accounts yet.
+- **Singles**: a one-song upload is edited as a track, with no album fields, and exports as a single MP3.
 - **Installs as an app** (PWA) on iPhone, Android and desktop, and works offline. On a phone browser, a sheet explains how to add it to the Home Screen; on Android it's a one-tap Install. Once installed, it behaves like a native app: no zoom, no pull-to-refresh, no stray text selection, a splash screen, bottom sheets you drag to dismiss, and safe-area insets. On Android it appears in the share menu.
 
 ## How it's built
