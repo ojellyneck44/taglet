@@ -1,6 +1,6 @@
 // Same approach as Any Day Now: network-first app shell, so every online load gets the newest build and the
 // cache is only an offline fallback. The audio engine and fonts never change at a given URL, so they're cache-first.
-const CACHE = "taglet-v5";
+const CACHE = "taglet-v6";
 const SHELL = [
   "/", "/css/base.css", "/css/app.css", "/js/app.js", "/js/engine.js", "/js/tags.js", "/js/link.js",
   "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png",

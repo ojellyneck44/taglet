@@ -14,6 +14,33 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const icon = (id) => `<svg aria-hidden="true"><use href="#i-${id}"/></svg>`;
 
+// ---------------------------------------------------------------- motion helpers (the "20 ways" rules)
+const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+const still = () => calm.matches;
+/** Rule 3: rows cascade 30 ms apart, capped so the whole list lands within ~300 ms. */
+function staggerIn(nodes) {
+  if (still()) return;
+  [...nodes].forEach((n, i) => n.animate([{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }],
+    { duration: 200, delay: Math.min(i, 9) * 30, easing: EASE, fill: "backwards" }));
+}
+/** Rule 8: one small pulse to confirm something worked. */
+function pulse(el) { if (el && !still()) el.animate([{ scale: 1 }, { scale: 1.06 }, { scale: 1 }], { duration: 350, easing: "ease-out" }); }
+/** Rule 17: new text is revealed through a moving mask instead of crossfading over the old. */
+function maskText(el, text) {
+  if (!el || el.textContent === text) return;
+  el.textContent = text;
+  if (!still()) el.animate([{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }], { duration: 250, easing: EASE });
+}
+/** Rule 18: icons swap with scale + opacity + a touch of blur, not a hard pop. */
+function swapIcon(btn, id) {
+  const svg = btn?.querySelector("svg");
+  if (!svg) return;
+  svg.querySelector("use").setAttribute("href", `#i-${id}`);
+  if (!still()) svg.animate([{ opacity: 0, scale: 0.6, filter: "blur(4px)" }, { opacity: 1, scale: 1, filter: "blur(0)" }], { duration: 180, easing: EASE });
+}
+/** Rule 19: past a limit, movement meets more and more resistance (iOS-style). */
+const rubber = (x, d = 60, c = 0.55) => (1 - 1 / ((x * c) / d + 1)) * d;
+
 // Installed from the Home Screen, Taglet behaves like an app (same rules as Any Day Now): no pinch or
 // double-tap zoom, no pull-to-refresh, and text selection only in fields (base.css, :root[data-native]).
 // In a plain browser the page keeps zoom for accessibility.
@@ -34,6 +61,7 @@ function openSheet(dlg) {
   if (!$(".sheet-handle", dlg)) inner.prepend(Object.assign(document.createElement("div"), { className: "sheet-handle" }));
   inner.scrollTop = 0;
   dlg.showModal();
+  staggerIn($$(".sheet-body > *, .steps-ol li, .auth-benefits li, .builds li", dlg));
   if (dlg.dataset.drag) return;
   dlg.dataset.drag = "1";
   dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close("cancel"); });
@@ -46,7 +74,8 @@ function openSheet(dlg) {
   });
   dlg.addEventListener("pointermove", (e) => {
     if (!start || e.pointerId !== start.id) return;
-    start.dy = Math.max(0, e.clientY - start.y);
+    const raw = e.clientY - start.y;
+    start.dy = raw >= 0 ? raw : -rubber(-raw, 40);
     dlg.style.transform = `translateY(${start.dy}px)`;
   });
   const end = (e) => {
@@ -59,7 +88,8 @@ function openSheet(dlg) {
       dlg.style.transform = to;
       setTimeout(() => { dlg.style.transition = ""; dlg.style.transform = ""; then?.(); }, ms);
     };
-    if (dy > dlg.offsetHeight / 4 || (dy > 24 && speed > 0.6)) settle(`translateY(${dlg.offsetHeight}px)`, 200, () => dlg.close("cancel"));
+    if (dy < 0) settle("", 260);
+    else if (dy > dlg.offsetHeight / 4 || (dy > 24 && speed > 0.6)) settle(`translateY(${dlg.offsetHeight}px)`, 200, () => dlg.close("cancel"));
     else settle("", 320);
   };
   dlg.addEventListener("pointerup", end);
@@ -386,7 +416,7 @@ function renderCheck(a) {
   const { issues, soft } = checkAlbum(a);
   const tag = $("#checkTag");
   const ready = !issues.length;
-  $("#checkText").textContent = ready ? "Ready for Spotify" : `${issues.length} to fix for Spotify`;
+  maskText($("#checkText"), ready ? "Ready for Spotify" : `${issues.length} to fix for Spotify`);
   tag.classList.toggle("warn", !ready);
   if (lastReady !== null && lastReady !== ready) { swing(tag, ready ? 14 : 8); if (ready) buzz(10); }
   lastReady = ready;
@@ -424,7 +454,7 @@ function renderArtists(t, focusIndex) {
   if (focusIndex !== undefined) $(`[data-artist="${focusIndex}"]`)?.focus();
 }
 
-function selectAlbum(id) { current.album = id; current.track = wide.matches || isSingle() ? albums.get(id)?.trackIds[0] || null : null; renderShelf(); renderAlbum(); renderInspector(); }
+function selectAlbum(id) { requestAnimationFrame(() => staggerIn($$("#tracks .track"))); current.album = id; current.track = wide.matches || isSingle() ? albums.get(id)?.trackIds[0] || null : null; renderShelf(); renderAlbum(); renderInspector(); }
 function selectTrack(id) { current.track = id; $$(".track").forEach((li) => li.setAttribute("aria-current", li.dataset.trackId === id)); renderInspector(); setView("track"); }
 
 function setAmbient(url) {
@@ -498,7 +528,7 @@ const actions = {
   syncLater: () => { hideSyncCard(); renderSyncCard(); },
   shareCreate: () => publishShare(albums.get(current.album)),
   shareStop: () => stopShare(albums.get(current.album)),
-  shareCopy: async () => { try { await navigator.clipboard.writeText($("#shareUrl").value); toast("Link copied."); buzz(); } catch { $("#shareUrl").select(); toast("Couldn’t copy automatically. The link is selected, so copy it from there.", "err"); } },
+  shareCopy: async (btn) => { try { await navigator.clipboard.writeText($("#shareUrl").value); confirmCopied(btn); buzz(); } catch { $("#shareUrl").select(); toast("Couldn’t copy automatically. The link is selected, so copy it from there.", "err"); } },
   shareNative: async () => { const a = albums.get(current.album); try { await navigator.share({ title: shareTitle(a), url: $("#shareUrl").value }); } catch {} },
   deleteAlbum: () => {
     const a = albums.get(current.album);
@@ -562,8 +592,8 @@ const actions = {
   replaceAudio: () => $("#pickBuild").click(),
   install: async () => { const e = installEvent; installEvent = null; showInstallHint(); if (e) { e.prompt(); const r = await e.userChoice.catch(() => null); if (r?.outcome === "accepted") buzz(); } $("#installSheet")?.close(); },
   removeArt: () => { const a = cropTarget; if (a) { a.art = null; renderAll(); } $("#cropDialog").close(); },
-  tint: (btn) => { const m = $("#tintMenu"); m.hidden = !m.hidden; btn.setAttribute("aria-expanded", String(!m.hidden)); if (!m.hidden) $("a", m).focus(); },
-  copyLink: async () => { try { await navigator.clipboard.writeText(linkURL()); toast("Link copied."); } catch { toast("Couldn’t copy. Type the code instead.", "err"); } },
+  tint: (btn) => { const m = $("#tintMenu"); m.hidden = !m.hidden; btn.setAttribute("aria-expanded", String(!m.hidden)); if (!m.hidden) $("a", m).focus({ focusVisible: false }); },
+  copyLink: async (btn) => { try { await navigator.clipboard.writeText(linkURL()); confirmCopied(btn); } catch { toast("Couldn’t copy. Type the code instead.", "err"); } },
   sendPick: () => $("#pickSend").click(),
   sendExports: () => sendFiles(lastExports.map((x) => new File([x.bytes], x.name.split("/").pop(), { type: "audio/mpeg" }))),
   exportZip: () => runExport("zip"),
@@ -615,7 +645,12 @@ $("#pickBuild").addEventListener("change", (e) => { const f = e.target.files[0];
 $("#pickSend").addEventListener("change", (e) => { sendFiles([...e.target.files]); e.target.value = ""; });
 
 const player = $("#player");
-const setPlayButton = (playing) => { const b = $('[data-act="preview"]'); b.innerHTML = `${icon(playing ? "pause" : "play")}<span>${playing ? "Pause" : "Play"}</span>`; };
+const setPlayButton = (playing) => {
+  const b = $('[data-act="preview"]');
+  if ($("span", b).textContent === (playing ? "Pause" : "Play")) return;
+  swapIcon(b, playing ? "pause" : "play");
+  maskText($("span", b), playing ? "Pause" : "Play");
+};
 let playRaf = 0;
 function tickPlay() {
   const row = $(`.track[data-track-id="${player.dataset.track}"]`);
@@ -638,7 +673,8 @@ document.addEventListener("pointerdown", (e) => {
   li.classList.add("lifted");
   grip.setPointerCapture(e.pointerId);
   const move = (ev) => {
-    const dy = ev.clientY - startY;
+    const raw = ev.clientY - startY, lo = -from * h, hi = (rows.length - 1 - from) * h;
+    const dy = raw < lo ? lo - rubber(lo - raw) : raw > hi ? hi + rubber(raw - hi) : raw;
     to = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / h)));
     li.style.transform = `translateY(${dy}px) scale(1.01)`;
     rows.forEach((r, i) => {
@@ -760,7 +796,14 @@ function clampCrop() {
   crop.x = Math.min(0, Math.max(crop.V - w, crop.x));
   crop.y = Math.min(0, Math.max(crop.V - h, crop.y));
 }
-function drawCrop() { clampCrop(); const sc = crop.base * crop.zoom; $("#cropImg").style.transform = `translate(${crop.x}px, ${crop.y}px) scale(${sc})`; }
+function drawCrop(elastic = false) {
+  const sc = crop.base * crop.zoom;
+  if (!elastic) { clampCrop(); $("#cropImg").style.transform = `translate(${crop.x}px, ${crop.y}px) scale(${sc})`; return; }
+  // While a finger is down, show how far past the edge it went, with resistance; the real position stays put.
+  const w = crop.nw * sc, h = crop.nh * sc;
+  const band = (v, lo) => (v > 0 ? rubber(v) : v < lo ? lo - rubber(lo - v) : v);
+  $("#cropImg").style.transform = `translate(${band(crop.x, crop.V - w)}px, ${band(crop.y, crop.V - h)}px) scale(${sc})`;
+}
 function zoomTo(z, cx = crop.V / 2, cy = crop.V / 2) {
   const old = crop.base * crop.zoom;
   crop.zoom = Math.max(1, Math.min(4, z));
@@ -788,9 +831,18 @@ function zoomTo(z, cx = crop.V / 2, cy = crop.V / 2) {
       return;
     }
     crop.x += e.clientX - last.x; crop.y += e.clientY - last.y; last = { x: e.clientX, y: e.clientY };
-    drawCrop();
+    drawCrop(true);
   });
-  const end = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; const p = [...pts.values()][0]; if (p) last = { x: p.clientX, y: p.clientY }; };
+  const end = (e) => {
+    pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
+    const p = [...pts.values()][0]; if (p) last = { x: p.clientX, y: p.clientY };
+    if (!pts.size && crop) {
+      const img = $("#cropImg");
+      img.style.transition = still() ? "" : "transform .3s cubic-bezier(0.23, 1, 0.32, 1)";
+      drawCrop();
+      setTimeout(() => { img.style.transition = ""; }, 320);
+    }
+  };
   box.addEventListener("pointerup", end); box.addEventListener("pointercancel", end);
   box.addEventListener("wheel", (e) => { if (!crop) return; e.preventDefault(); const r = box.getBoundingClientRect(); zoomTo(crop.zoom * Math.exp(-e.deltaY / 400), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   box.addEventListener("keydown", (e) => {
@@ -808,6 +860,7 @@ function zoomTo(z, cx = crop.V / 2, cy = crop.V / 2) {
     const blob = await squareJpeg(crop.img, { sx: -crop.x / sc, sy: -crop.y / sc, s: crop.V / sc });
     setArt(cropTarget, blob);
     renderAll();
+    pulse($("#artBtn"));
     swing($("#checkTag"), 10);
   });
   $("#cropDialog").addEventListener("cancel", () => { $("#cropDialog").returnValue = "cancel"; });
@@ -916,6 +969,7 @@ async function runExport(mode) {
   $("#exportDoneText").textContent = `${out.length} ${out.length === 1 ? "file" : "files"} ready${failed ? `, ${failed} failed` : ""}. ` +
     (rebuilt ? "For new builds, save over the old files in the same folder so Spotify keeps one copy of each song." : "Next, add them to Spotify’s Local Files.");
   $("#exportDone").hidden = false;
+  pulse($("#exportDone .btn"));
   $("#sendExports").hidden = false;
 }
 
@@ -924,6 +978,14 @@ function download(blob, name) {
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/** "Copy link" turns into a check and "Copied" for a moment, with one pulse (rules 8, 17, 18). */
+function confirmCopied(btn) {
+  const label = $("span", btn), was = label.textContent;
+  swapIcon(btn, "check"); maskText(label, "Copied"); pulse(btn);
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => { swapIcon(btn, "copy"); maskText(label, was); }, 1600);
 }
 
 // ---------------------------------------------------------------- link a device
@@ -1118,7 +1180,7 @@ function toast(text, kind = "", action) {
     el.append(b);
   }
   $("#toasts").append(el);
-  window.Motion?.animate(el, { opacity: [0, 1], y: [16, 0], scale: [0.96, 1] }, { type: "spring", stiffness: 420, damping: 32 });
+  if (!still()) el.animate([{ opacity: 0, transform: "translateY(16px) scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: EASE });
   setTimeout(() => {
     const done = () => el.remove();
     if (window.Motion && !calm.matches) window.Motion.animate(el, { opacity: 0, y: 8 }, { duration: 0.2 }).then(done); else done();
@@ -1325,8 +1387,11 @@ async function applyLibrary(remote, covers) {
 onAccountChange((user) => {
   $$('[data-act="account"]').forEach((b) => {
     if (!b.closest("#syncCard")) b.hidden = !accountAvailable();
-    const label = $("span", b) || b;
-    label.textContent = user ? "Synced" : "Sign in";
+    if (b.classList.contains("account-icon")) {
+      const was = b.classList.contains("synced");
+      b.classList.toggle("synced", !!user);
+      if (was !== !!user) { swapIcon(b, user ? "user-check" : "user"); if (user) pulse(b); }
+    } else if (!b.closest("#syncCard")) maskText($("span", b), user ? "Synced" : "Sign in");
     b.setAttribute("aria-label", user ? `Account: ${user.email || user.name || "signed in"}. Your albums sync.` : "Sign in to keep your albums on every device (optional)");
   });
   renderSyncCard();

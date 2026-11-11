@@ -32,8 +32,11 @@
   /* Spacing: 4px base. */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px;
   --r-row: 10px; --r-field: 9px; --r-art: 5px; --r-sheet: 26px;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Motion (from the "20 ways" UI animation rules): fast for things people trigger often, ease-out to enter,
+     ease-in-out to move, exits ~20% shorter than entrances. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-io: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 150ms; --dur-base: 200ms; --dur-exit: 160ms; --dur-slow: 300ms;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -101,10 +104,10 @@ input, textarea { caret-color: var(--accent); }
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   min-height: 44px; padding: 0 var(--s4); border-radius: 999px; border: 0; cursor: pointer;
   font-weight: 600; font-size: var(--t-sm); letter-spacing: 0.005em; white-space: nowrap; text-decoration: none;
-  transition: transform 0.25s var(--ease-out), background-color 0.2s, color 0.2s, opacity 0.2s;
+  transition: transform var(--dur-fast) var(--ease-out), background-color 0.2s, color 0.2s, opacity 0.2s;
 }
 .btn svg { width: 18px; height: 18px; flex: none; }
-.btn:active:not(:disabled) { transform: scale(0.96); }
+.btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); }
 .btn.primary:hover:not(:disabled) { background: color-mix(in oklab, var(--accent), white 14%); }
