@@ -42,7 +42,9 @@ async function push() {
     ls.set(COVERS_SENT, JSON.stringify([...sent].slice(-500)));
     await api("/api/account/library", { method: "PUT", body: lib });
     // Then the audio, so every song plays on every device. The library goes first so the songs exist server-side.
-    for (const { id, file } of ui.pendingAudio()) {
+    for (const id of ui.pendingAudio()) {
+      const file = await ui.cloudFile(id);
+      if (!file) continue;
       const r = await fetch(`/api/account/audio/${id}`, { method: "PUT", credentials: "same-origin", body: file });
       if (r.ok) ui.markCloud(id);
       else {
@@ -189,7 +191,7 @@ export function openAccount() {
   const via = [me.apple && "Apple", me.google && "Google", me.github && "GitHub"].filter(Boolean).join(", ");
   const dlg = sheet("account", "Your account", `
     <p class="hint-lg">Signed in as <strong>${esc(me.email || me.name || "you")}</strong>${via ? ` · ${esc(via)}` : ""}</p>
-    <p class="hint">Your albums, tags, track order, covers and audio sync to this account. Your audio is stored in your account too (up to 1 GB), so every song plays on every device.</p>
+    <p class="hint">Your albums, tags, track order, covers and audio sync to this account. Your audio is stored in your account too (up to 1 GB), so every song plays on every device. Lossless files (WAV, FLAC) are stored as 320 kbps MP3 copies to save space; your originals stay on the device you added them on.</p>
     <div class="sheet-actions" style="justify-content:flex-start"><button class="btn ghost" type="button" data-signout>Sign out</button></div>
     <details class="danger-zone"><summary>Delete account</summary>
       <p class="hint">Deletes your account and its synced library from Taglet’s servers. Everything saved on this device stays.</p>

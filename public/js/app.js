@@ -1564,6 +1564,19 @@ async function restore() {
 }
 // ---------------------------------------------------------------- account sync
 
+const LOSSLESS = /^(flac|pcm_|alac|wavpack|tta|ape)/;
+const noCloud = new Set(); // songs that couldn't be encoded this session, so we don't retry them on every sync
+/** What goes to the account: the file itself, or for lossless sources a 320 kbps MP3 copy (about a quarter of the size). */
+async function cloudFile(id) {
+  const t = tracks.get(id);
+  if (!t?.file) return null;
+  if (!LOSSLESS.test(t.codec || "")) return t.file;
+  try {
+    const { bytes } = await render(t, t.tags, null, { quality: "320", trimSilence: false });
+    return new File([bytes], t.file.name.replace(/\.\w+$/, "") + ".mp3", { type: "audio/mpeg" });
+  } catch { noCloud.add(id); return null; }
+}
+
 /** The song's audio as a File: already here, or downloaded once from the account and kept on this device. */
 async function ensureFile(t) {
   if (t.file) return t.file;
@@ -1572,7 +1585,9 @@ async function ensureFile(t) {
     const r = await fetch(`/api/account/audio/${t.id}`, { credentials: "same-origin" });
     if (!r.ok) return null;
     const name = t.fileName || `${t.tags.title || "song"}.${t.codec || "mp3"}`;
-    t.file = new File([await r.blob()], name);
+    const lossy = LOSSLESS.test(t.codec || ""); // lossless songs are stored in the account as 320 kbps MP3 copies
+    t.file = new File([await r.blob()], lossy ? name.replace(/\.\w+$/, "") + ".mp3" : name);
+    if (lossy) Object.assign(t, { codec: "mp3", fileName: t.file.name, sampleRate: [44100, 48000].includes(t.sampleRate) ? t.sampleRate : 44100 });
     save();
     return t.file;
   } catch { return null; }
@@ -1643,7 +1658,8 @@ restore().finally(() => {
   loaded.then(() => setTimeout(hideSplash, 150));
   navigator.storage?.persist?.().catch(() => {});
   initAccount({ openSheet, toast, icon, getLibrary, applyLibrary,
-    pendingAudio: () => [...tracks.values()].filter((t) => t.file && !t.cloud).map((t) => ({ id: t.id, file: t.file })),
+    pendingAudio: () => [...tracks.values()].filter((t) => t.file && !t.cloud && !noCloud.has(t.id)).map((t) => t.id),
+    cloudFile,
     markCloud: (id) => { const t = tracks.get(id); if (t) { t.cloud = true; save(); } }, coverBlob: (id) => albums.get(id)?.art?.blob || null });
 });
 
