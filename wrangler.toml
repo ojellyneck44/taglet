@@ -51,3 +51,19 @@ id = "c5f53ef5266443ed9a7077a650e73892"
 binding = "DB"
 database_name = "taglet"
 database_id = "15a331e3-ea97-4ec6-bef8-b06dd44c890c"
+
+# "Add from a link": YouTube/SoundCloud audio, fetched by a small yt-dlp server (fetcher/) that only this
+# Worker can reach. Needs the Workers Paid plan.
+[[containers]]
+class_name = "Fetcher"
+image = "./fetcher/Dockerfile"
+max_instances = 2
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+name = "FETCHER"
+class_name = "Fetcher"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Fetcher"]

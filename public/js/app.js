@@ -1,5 +1,5 @@
 import { loadEngine, probe, render } from "./engine.js";
-import { buildKey, fillBatch, joinArtists, safeName, zipParts } from "./tags.js";
+import { buildKey, fillBatch, joinArtists, safeName, splitArtists, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
 import { b64url, unb64url, newKeyBytes, importKey, seal, shareUrl } from "./sharekit.js";
 import { initAccount, onAccountChange, openAccount, schedulePush, syncCardHidden, hideSyncCard, accountAvailable } from "./account.js";
@@ -173,11 +173,20 @@ async function importAudio(audio, source, opts) {
   let n = 0;
   const failed = []; // [file name, reason], reported together at the end
   const read = [];
-  audio.sort((a, b) => collator.compare(a.name, b.name));
+  if (!opts.hints) audio.sort((a, b) => collator.compare(a.name, b.name)); // songs from a link keep the playlist's order
   for (const file of audio) {
     n++;
     engine.innerHTML = `<span>Reading ${n} of ${audio.length}: ${esc(file.name)}</span><progress max="${audio.length}" value="${n - 1}"></progress>`;
-    try { read.push({ file, info: await probe(file) }); } catch (err) { failed.push([file.name, readReason(err)]); }
+    try {
+      const info = await probe(file);
+      // Songs from a link: what the site knows wins over the (usually empty) tags in the file.
+      const h = opts.hints?.get(file);
+      if (h) {
+        for (const [k, v] of Object.entries(h)) if (k !== "art" && (Array.isArray(v) ? v.length : v)) info.tags[k] = v;
+        if (!info.art && h.art) info.art = h.art;
+      }
+      read.push({ file, info });
+    } catch (err) { failed.push([file.name, readReason(err)]); }
   }
   engine.hidden = true;
   fillBatch(read.map((r) => r.info.tags)); // blanks come from the song with the most tags
@@ -579,6 +588,7 @@ document.addEventListener("keydown", (e) => {
 const actions = {
   pick: () => { pickInto = null; $("#pickAudio").click(); },
   addToAlbum: () => { pickInto = current.album; $("#pickAudio").click(); },
+  fromLink: () => { $("#albumLink").value = ""; openSheet($("#linkImportDialog")); $("#albumLink").focus(); },
   share: () => openShare(),
   account: () => { $("#tintMenu").hidden = true; openAccount(); },
   syncLater: () => { hideSyncCard(); renderSyncCard(); },
@@ -774,8 +784,101 @@ addEventListener("drop", (e) => {
 addEventListener("paste", (e) => {
   if (e.target.closest?.("input, textarea")) return;
   const f = [...(e.clipboardData?.files || [])];
-  if (f.length) { e.preventDefault(); addFiles(f, " from the clipboard", { into: openAlbumFor(document.activeElement) }); }
+  if (f.length) { e.preventDefault(); addFiles(f, " from the clipboard", { into: openAlbumFor(document.activeElement) }); return; }
+  const link = (e.clipboardData?.getData("text") || "").trim();
+  if (LINK.test(link)) { e.preventDefault(); importLink(link, openAlbumFor(document.activeElement)); }
 });
+
+// ---------------------------------------------------------------- add from a link (YouTube, SoundCloud)
+
+const LINK = /^https:\/\/(?:[a-z0-9-]+\.)*(?:youtube\.com|youtu\.be|soundcloud\.com)\/\S+$/i;
+const LINK_ERRORS = {
+  blocked: "YouTube is turning Taglet’s server away right now. Try again in a while, or add the file itself.",
+  unavailable: "That song or playlist is private, removed, or not available.",
+  too_long: "That’s longer than 20 minutes, which is more than a song link can bring in.",
+  unsupported: "Paste a link to a YouTube video or playlist, or a SoundCloud track or set.",
+};
+
+document.addEventListener("submit", (e) => {
+  const form = e.target.closest("[data-link-form]");
+  if (!form) return;
+  e.preventDefault();
+  const into = "into" in form.dataset ? current.album : null;
+  form.closest("dialog")?.close();
+  importLink(form.url.value, into).then((ok) => { if (ok) form.url.value = ""; });
+});
+
+async function linkApi(path) {
+  const r = await fetch(path).catch(() => null);
+  if (r?.ok) return r;
+  let msg = r ? await r.text().catch(() => "") : "";
+  try { msg = LINK_ERRORS[JSON.parse(msg).error] || ""; } catch {}
+  if (msg.startsWith("<")) msg = "";
+  throw new Error(msg || "Couldn’t get that link. Check you’re online and try again.");
+}
+
+/** A square JPEG of a thumbnail (YouTube's are 16:9), or null. */
+async function linkCover(u) {
+  if (!u) return null;
+  try {
+    const r = await linkApi(`/api/fetch/thumb?url=${encodeURIComponent(u)}`);
+    const img = await loadImage(await r.blob());
+    return await squareJpeg(img, centerCrop(img));
+  } catch { return null; }
+}
+
+/** Tags for a song from a link. Without an artist field, "Artist - Title" names are split, and the uploader is the fallback. */
+function linkTags(m, pl, i, n, art) {
+  let title = m.title || "", artists = m.artists?.length ? m.artists : [];
+  if (!artists.length) {
+    // ponytail: a naive split; it covers the common "Artist - Song (Official Video)" upload.
+    const s = title.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+    if (s) { artists = splitArtists(s[1]); title = s[2]; } else if (m.uploader) artists = [m.uploader];
+  }
+  title = title.replace(/\s*[([](?:official\s+)?(?:music\s+|lyric\s+)?(?:video|audio|visuali[sz]er|lyrics?)[)\]]/gi, "").trim() || m.title;
+  return { title, artists, album: m.album || pl?.title || "", year: m.year || "", genre: m.genre || "",
+    track: m.track || (pl ? i + 1 : 0), trackTotal: pl ? n : 0, art };
+}
+
+/** Resolves true when at least one song came in. */
+async function importLink(raw, into) {
+  const url = String(raw || "").trim();
+  if (!LINK.test(url)) { toast(LINK_ERRORS.unsupported, "err"); return false; }
+  const engine = $("#engine");
+  const status = (t, v, max) => { engine.hidden = false; engine.innerHTML = `<span>${esc(t)}</span><progress max="${max || 1}"${v == null ? "" : ` value="${v}"`}></progress>`; };
+  if (document.body.dataset.view === "welcome") setView(wide.matches ? "album" : "shelf");
+  busy++;
+  try {
+    status("Looking up the link…");
+    const info = await (await linkApi(`/api/fetch/info?url=${encodeURIComponent(url)}`)).json();
+    const list = info.entries || [], pl = info.kind === "playlist" ? info : null;
+    if (!list.length) throw new Error("There are no songs at that link.");
+    const shared = pl ? await linkCover(pl.thumbnail) : null; // a playlist or set gets one cover
+    const files = [], hints = new Map(), failed = [];
+    for (const [i, e] of list.entries()) {
+      status(`Getting ${list.length > 1 ? `${i + 1} of ${list.length}: ` : ""}${e.title || "the song"}`, i, list.length);
+      try {
+        const r = await linkApi(`/api/fetch/audio?url=${encodeURIComponent(e.url)}`);
+        const m = JSON.parse(decodeURIComponent(r.headers.get("X-Taglet-Meta") || "%7B%7D"));
+        const f = new File([await r.blob()], `${safeName(m.title || e.title || "Song")}.${m.ext || "m4a"}`, { type: r.headers.get("Content-Type") || "" });
+        hints.set(f, linkTags(m, pl, i, list.length, shared || await linkCover(m.thumbnail)));
+        files.push(f);
+      } catch (err) {
+        failed.push(e.title || "A song");
+        if (/limit|turning/.test(err.message)) { toast(err.message, "err"); break; }
+      }
+    }
+    engine.hidden = true;
+    if (failed.length) toast(`${failed.length === list.length ? "None of the songs" : `${failed.length} of ${list.length} songs`} could be brought in${failed.length < 3 ? ` (${failed.join(", ")})` : ""}.`, "err");
+    if (!files.length) return false;
+    await addFiles(files, ` from ${/soundcloud/i.test(url) ? "SoundCloud" : "YouTube"}`, { into, hints });
+    return true;
+  } catch (err) {
+    engine.hidden = true;
+    toast(err.message, "err");
+    return false;
+  } finally { busy--; maybeReload(); }
+}
 /** The album on screen, if the drop landed on it: anywhere but the welcome screen and the album list. */
 function openAlbumFor(target) {
   if (document.body.dataset.view === "welcome" || document.body.dataset.view === "shelf" || target?.closest?.("#shelf")) return null;

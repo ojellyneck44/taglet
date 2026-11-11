@@ -3,6 +3,7 @@
 // - /api/share stores shared albums for 30 days, encrypted on the sender's device; the key lives in the link's
 //   #fragment, which browsers never send to a server.
 import { DurableObject } from "cloudflare:workers";
+import { Container, getContainer } from "@cloudflare/containers";
 import * as auth from "./auth.js";
 
 const SHARE_TTL = 30 * 24 * 60 * 60; // seconds
@@ -16,7 +17,41 @@ const LIMITS = {
   uploads: 300,                  // files uploaded per person (an album of 12 is about 14)
   bytes: 750 * 1024 * 1024,      // megabytes uploaded per person
   writes: 950,                   // KV writes for everyone together
+  lookups: 60,                   // links looked up per person ("Add from a link")
+  fetches: 80,                   // songs fetched from links per person
+  fetchAll: 3000,                // songs fetched from links for everyone together
 };
+
+// "Add from a link": the fetcher container (fetcher/app.py, yt-dlp) is reachable only through here.
+export class Fetcher extends Container {
+  defaultPort = 8080;
+  sleepAfter = "10m";
+}
+const LINK_HOST = /^(?:[a-z0-9-]+\.)*(?:youtube\.com|youtu\.be|soundcloud\.com)$/;
+const THUMB_HOST = /^(?:[a-z0-9-]+\.)*(?:ytimg\.com|ggpht\.com|googleusercontent\.com|sndcdn\.com)$/;
+
+async function fetchLink(req, env, url) {
+  if (req.method !== "GET") return text("Method not allowed", 405);
+  const what = url.pathname.slice("/api/fetch/".length);
+  const target = url.searchParams.get("url") || "";
+  let host = "";
+  try { const u = new URL(target); if (u.protocol === "https:") host = u.hostname.toLowerCase(); } catch {}
+  if (what === "thumb") {
+    // The cover picture, passed through so the page's CSP can stay 'self'.
+    if (!THUMB_HOST.test(host)) return text("Not a cover image", 400);
+    const r = await fetch(target, { cf: { cacheTtl: 86400 } });
+    const type = r.headers.get("Content-Type") || "";
+    if (!r.ok || !type.startsWith("image/")) return text("Cover not found", 404);
+    return new Response(r.body, { headers: { "Content-Type": type, "Cache-Control": "private, max-age=3600" } });
+  }
+  if ((what !== "info" && what !== "audio") || !LINK_HOST.test(host)) return text("Paste a YouTube or SoundCloud link.", 400);
+  const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+  if (what === "info" && !(await take(env, `lookups:${ip}`, 1, LIMITS.lookups)))
+    return tooMany(`You’ve looked up ${LIMITS.lookups} links today, which is the daily limit. Try again tomorrow.`);
+  if (what === "audio" && (!(await take(env, `fetches:${ip}`, 1, LIMITS.fetches)) || !(await take(env, "fetches", 1, LIMITS.fetchAll))))
+    return tooMany(`That’s the daily limit for songs from links. Try again tomorrow, or add the files themselves.`);
+  return getContainer(env.FETCHER).fetch(new Request(`http://fetcher/${what}?url=${encodeURIComponent(target)}`));
+}
 
 export default {
   async fetch(req, env) {
@@ -27,6 +62,7 @@ export default {
       return env.ROOMS.get(env.ROOMS.idFromName(m[1])).fetch(req);
     }
     if (url.pathname.startsWith("/api/share")) return share(req, env, url);
+    if (url.pathname.startsWith("/api/fetch/")) return fetchLink(req, env, url);
     if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/account/")) return account(req, env, url);
     if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
     return env.ASSETS.fetch(req);

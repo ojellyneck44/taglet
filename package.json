@@ -1,1 +1,1 @@
-{"type":"module","private":true,"scripts":{"test":"node public/js/tags.test.mjs","deploy":"wrangler deploy"},"devDependencies":{"wrangler":"^4.160.0"}}
+{"type":"module","private":true,"scripts":{"test":"node public/js/tags.test.mjs","deploy":"wrangler deploy"},"devDependencies":{"@cloudflare/containers":"^0.3.7","wrangler":"^4.160.0"}}

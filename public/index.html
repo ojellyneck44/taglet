@@ -81,6 +81,11 @@
         <button class="btn primary big" type="button" data-act="pick"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Choose songs</span></button>
         <button class="btn ghost big" type="button" data-act="link"><svg aria-hidden="true"><use href="#i-link"/></svg><span>Get them from another device</span></button>
       </div>
+      <form class="link-form" data-link-form>
+        <label class="sr-only" for="welcomeLink">YouTube or SoundCloud link</label>
+        <input id="welcomeLink" name="url" type="url" inputmode="url" autocomplete="off" placeholder="Or paste a YouTube or SoundCloud link" required>
+        <button class="btn primary small" type="submit">Add</button>
+      </form>
       <p class="formats">WAV, FLAC, AIFF, ALAC, M4A, OGG, Opus, WMA and MP3<span class="drop-hint"> · or drop them anywhere</span></p>
       <p class="install-hint" id="installHint" hidden></p>
     </div>
@@ -136,6 +141,7 @@
         <div class="tracks-tools">
           <button class="btn ghost small" type="button" data-act="renumber">Number in this order</button>
           <button class="btn ghost small" type="button" data-act="addToAlbum"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add songs</span></button>
+          <button class="btn ghost small" type="button" data-act="fromLink"><svg aria-hidden="true"><use href="#i-link"/></svg><span>From a link</span></button>
         </div>
       </div>
       <ol class="tracks" id="tracks" aria-labelledby="tracksTitle"></ol>
@@ -231,6 +237,20 @@
       <ul class="transfers" id="transfers"></ul>
     </div>
     <p class="fineprint">Files pass through Taglet’s relay encrypted with a key made from the code. The relay can’t open them, and keeps nothing.</p>
+  </div>
+</dialog>
+
+<!-- Add songs from a YouTube or SoundCloud link -->
+<dialog class="sheet glass" id="linkImportDialog" aria-labelledby="linkImportTitle">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h2 id="linkImportTitle">Add from a link</h2><button class="btn ghost icon-only" type="button" data-close aria-label="Close"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <p class="hint-lg">Paste a YouTube video or playlist, or a SoundCloud track or set. The songs join this album with their title, artist and cover filled in.</p>
+    <form class="link-form" data-link-form data-into>
+      <label class="sr-only" for="albumLink">YouTube or SoundCloud link</label>
+      <input id="albumLink" name="url" type="url" inputmode="url" autocomplete="off" placeholder="https://" required>
+      <button class="btn primary" type="submit">Add</button>
+    </form>
+    <p class="hint">Up to 40 songs of 20 minutes or less per link. You can also paste a link anywhere in Taglet.</p>
   </div>
 </dialog>
 

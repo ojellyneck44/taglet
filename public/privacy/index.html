@@ -33,6 +33,9 @@
   <h2>Linking a device</h2>
   <p>Link a device is the one feature that moves files over the internet, and only when you send something. The pairing code is turned into an encryption key on each device. Files are encrypted with AES-GCM before they leave, pass through a small relay on Cloudflare, and are decrypted on the other device. The relay sees only a scrambled room name and encrypted bytes. It can’t read them and stores nothing. The code is part of the QR link after the <strong>#</strong>, which browsers never send to a server.</p>
 
+  <h2>Adding songs from a link</h2>
+  <p>When you paste a YouTube or SoundCloud link, the link (and nothing else of yours) goes to Taglet’s server on Cloudflare. The server fetches the audio and the song’s public title, artist and cover picture from that site, sends them straight back to you, and keeps no copy. Your IP address is counted toward a daily limit, and the count is deleted after the day ends. Only add songs you have the right to use.</p>
+
   <h2>Sharing a link</h2>
   <p>When you share an album or single, Taglet converts the songs on your device, encrypts them with a new random key, and only then uploads them. The key is part of the link after the <strong>#</strong>, so it never reaches the server. Taglet stores the scrambled files for 30 days and can’t open them. Anyone you give the link to can play and download the songs. Stop sharing, or deleting the album, removes them straight away.</p>
 

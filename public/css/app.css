@@ -543,3 +543,12 @@ body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under
 .cover-picks input:checked ~ span { color: var(--paper); }
 .cover-picks span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cover-picks:has(.pick:only-child) { grid-template-columns: minmax(0, 180px); }
+
+/* Add from a link */
+.link-form { display: flex; gap: var(--s2); width: min(100%, 420px); margin: var(--s4) auto 0; }
+.link-form input { flex: 1; min-width: 0; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(243,236,226,.12); background: rgba(243,236,226,.05); color: var(--paper); font: inherit; font-size: 16px; transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out); }
+.link-form input::placeholder { color: var(--paper-3); }
+.link-form input:focus { outline: none; border-color: var(--accent); background: rgba(243,236,226,.08); }
+.link-form .btn { flex: none; }
+.sheet .link-form { width: 100%; margin: var(--s4) 0 var(--s3); }
+.sheet .link-form input { height: 44px; }
