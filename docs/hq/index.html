@@ -1,0 +1,367 @@
+<title>Taglet HQ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: phone-first control board. Three tabs on a bottom dock: Numbers (live from Taglet's database), Queue (posts to review and post), Accounts (which social accounts are set up). */
+:root {
+  --bg: #f6f4f0; --surface: #ffffff; --surface-2: #efece6; --border: #e2ded6; --border-strong: #c9c4b9;
+  --text: #17140f; --text-2: #4d483e; --text-3: #6a6458;
+  --accent: #1f8f7e; --accent-soft: #e3f4f0; --accent-text: #17695c; --on-accent: #ffffff;
+  --ok: #17695c; --ok-soft: #e3f4f0; --warn: #9a5200; --warn-soft: #fff1de; --bad: #b3261e; --bad-soft: #fde9e7;
+  --shadow: 0 1px 2px rgba(23,20,15,.05), 0 4px 16px rgba(23,20,15,.06);
+  --font: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --fs-sm: 14px; --fs-md: 16px; --fs-xl: 26px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b0a09; --surface: #15130f; --surface-2: #1e1b16; --border: #2a261f; --border-strong: #3a352c;
+  --text: #f3ece2; --text-2: #c9c1b3; --text-3: #a39b8c;
+  --accent: #4fc4b1; --accent-soft: #10302b; --accent-text: #7fdccd; --on-accent: #0b0a09;
+  --ok: #7fdccd; --ok-soft: #10302b; --warn: #f2b25c; --warn-soft: #33230f; --bad: #f59b93; --bad-soft: #35161a;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0b0a09; --surface: #15130f; --surface-2: #1e1b16; --border: #2a261f; --border-strong: #3a352c;
+  --text: #f3ece2; --text-2: #c9c1b3; --text-3: #a39b8c;
+  --accent: #4fc4b1; --accent-soft: #10302b; --accent-text: #7fdccd; --on-accent: #0b0a09;
+  --ok: #7fdccd; --ok-soft: #10302b; --warn: #f2b25c; --warn-soft: #33230f; --bad: #f59b93; --bad-soft: #35161a;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3); color-scheme: dark }
+
+*, *::before, *::after { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font: 400 var(--fs-md)/1.5 var(--font); -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px calc(96px + env(safe-area-inset-bottom, 0px)); }
+.wrap { max-width: 560px; margin: 0 auto; display: grid; gap: 24px; }
+h1, h2, h3, p { margin: 0; }
+h1 { font: 700 var(--fs-xl)/1.2 var(--font); letter-spacing: -.015em; text-wrap: balance; }
+h2 { font: 600 var(--fs-sm)/1.3 var(--font); text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+button { font: 600 var(--fs-sm) var(--font); color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-sm); min-height: 44px; padding: 8px 14px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.ghost { background: transparent; border-color: transparent; color: var(--accent-text); padding-inline: 8px; }
+button:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mast { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: var(--fs-sm); color: var(--text-2); }
+.mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; }
+.mark .svg { width: 16px; height: 16px; stroke-width: 2.4; }
+.live { font: 500 12px var(--mono); color: var(--text-3); }
+.sec { display: grid; gap: 10px; }
+.note { background: var(--surface-2); border-radius: var(--r-md); padding: 12px 14px; font-size: var(--fs-sm); color: var(--text-2); display: grid; gap: 10px; justify-items: start; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; display: grid; gap: 2px; min-width: 0; }
+.tile b { font: 600 var(--fs-xl)/1.1 var(--font); font-variant-numeric: tabular-nums; }
+.tile span { font-size: 12px; color: var(--text-3); }
+.meter { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px; display: grid; gap: 10px; box-shadow: var(--shadow); }
+.meter .top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: var(--fs-sm); color: var(--text-2); }
+.bar { height: 12px; border-radius: 999px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--border); }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar.warn i { background: var(--warn); } .bar.bad i { background: var(--bad); }
+.small { font-size: 12px; color: var(--text-3); }
+.upnext { display: grid; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.upnext a, .upnext div { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; font-size: var(--fs-sm); }
+.upnext > :first-child { border-top: 0; }
+.upnext time { font: 500 12px var(--mono); color: var(--text-3); }
+.upnext .ttl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chip { flex: none; min-height: 36px; padding: 6px 12px; border-radius: 999px; font-weight: 500; border-color: var(--border); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
+.chip small { font-variant-numeric: tabular-nums; color: var(--text-3); margin-left: 4px; }
+.list { display: grid; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--text-3); }
+.tag { font: 600 12px/1.7 var(--font); padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.tag.draft { background: var(--warn-soft); color: var(--warn); } .tag.approved { background: var(--accent-soft); color: var(--accent-text); } .tag.posted { background: var(--ok-soft); color: var(--ok); }
+.card h3 { font: 600 var(--fs-md)/1.35 var(--font); overflow-wrap: anywhere; }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
+.body.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.video { display: block; width: 100%; max-width: 260px; aspect-ratio: 9 / 16; max-height: 70vh; border-radius: var(--r-md); background: #000; object-fit: contain; }
+.video.wide { max-width: 100%; aspect-ratio: 16 / 9; }
+.shot { display: block; width: 100%; height: auto; border-radius: var(--r-md); border: 1px solid var(--border); }
+.vidbox { display: grid; gap: 6px; justify-items: start; }
+.link { font: 500 12px var(--mono); color: var(--accent-text); overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cnote { font-size: var(--fs-sm); color: var(--text-2); }
+label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+input, select, textarea { font: var(--fs-md) var(--font); color: var(--text); background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 9px 12px; width: 100%; min-width: 0; }
+input[type="checkbox"] { width: 22px; height: 22px; padding: 0; accent-color: var(--accent); }
+textarea { min-height: 120px; resize: vertical; }
+.field { display: grid; gap: 4px; }
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.empty { text-align: center; padding: 28px 16px; color: var(--text-2); background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--r-lg); font-size: var(--fs-sm); }
+.state { font-size: var(--fs-sm); color: var(--text-2); }
+.acct { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; }
+.acct .name { font-weight: 600; }
+.acct .conn { display: flex; align-items: center; gap: 8px; }
+.acct .field { grid-column: 1 / -1; }
+.dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--border);
+  padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.dock nav { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dock button { all: unset; cursor: pointer; display: grid; justify-items: center; gap: 2px; padding: 6px 0; min-height: 44px; border-radius: var(--r-sm); font-size: 12px; font-weight: 600; color: var(--text-3); }
+.dock button[aria-current="page"] { color: var(--accent-text); }
+.dock button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: var(--r-sm); font-size: var(--fs-sm); z-index: 30; max-width: calc(100% - 32px); }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="brand"><span class="mark" aria-hidden="true"><svg class="svg" viewBox="0 0 24 24"><path d="M12 2H5a2 2 0 0 0-2 2v7l10 10a2 2 0 0 0 2.8 0l5.2-5.2a2 2 0 0 0 0-2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>Taglet HQ</div>
+    <span class="live" id="live">Connecting…</span>
+  </header>
+
+  <main id="numbersView" class="wrap">
+    <section class="sec"><h1>Numbers</h1><p class="state" id="numState">Reading Taglet's database…</p></section>
+    <div class="note" id="cfNote" hidden></div>
+    <section class="sec" aria-labelledby="h1a"><h2 id="h1a">Accounts and libraries</h2><div class="tiles" id="tiles"></div></section>
+    <section class="sec" aria-labelledby="h1b"><h2 id="h1b">Audio storage (R2)</h2>
+      <div class="meter" id="meter"><p class="small">Waiting for the database.</p></div>
+    </section>
+    <section class="sec" aria-labelledby="h1c"><h2 id="h1c">Posted this week</h2><div class="tiles" id="postTiles"></div></section>
+    <section class="sec" aria-labelledby="h1d"><h2 id="h1d">Up next in the queue</h2><div class="upnext" id="upnext"></div></section>
+  </main>
+
+  <main id="queueView" class="wrap" hidden>
+    <div class="qhead"><h1>Queue</h1><button class="primary" id="newBtn" type="button">New item</button></div>
+    <form class="card" id="editor" hidden>
+      <h3 id="editorTitle">New item</h3>
+      <div class="row">
+        <div class="field"><label for="fPlatform">Platform</label>
+          <select id="fPlatform"><option value="tiktok">TikTok</option><option value="reels">Instagram Reels</option><option value="shorts">YouTube Shorts</option><option value="linkedin">LinkedIn</option><option value="pinterest">Pinterest</option><option value="reddit">Reddit</option></select></div>
+        <div class="field"><label for="fKind">Type</label>
+          <select id="fKind"><option value="video">Short video</option><option value="post">Post</option><option value="reply">Reply to a thread</option><option value="pin">Pin</option></select></div>
+        <div class="field"><label for="fWhen">Planned for</label><input id="fWhen" type="date"></div>
+      </div>
+      <div class="field"><label for="fTitle">Title or hook</label><input id="fTitle" maxlength="200" required></div>
+      <div class="field"><label for="fBody">Caption, post or reply text</label><textarea id="fBody" maxlength="10000"></textarea></div>
+      <div class="field"><label for="fTarget">Thread or video file (optional)</label><input id="fTarget" maxlength="500" placeholder="https://reddit.com/r/… or taglet-demo-9x16.mp4"></div>
+      <div class="field"><label for="fNotes">Notes (optional)</label><input id="fNotes" maxlength="500"></div>
+      <div class="actions"><button class="primary" type="submit" id="saveBtn">Save</button><button class="ghost" type="button" id="cancelBtn">Cancel</button></div>
+    </form>
+    <div class="chips" id="statusChips" aria-label="Status"></div>
+    <div class="chips" id="platformChips" aria-label="Platform"></div>
+    <p class="state" id="state">Loading the queue…</p>
+    <section class="list" id="list" aria-live="polite"></section>
+  </main>
+
+  <main id="acctView" class="wrap" hidden>
+    <section class="sec"><h1>Accounts</h1><p class="state">Tick each one once it's created and connected in Composio, and note its handle. Claude reads this list before posting, so Taglet posts never go out through the Any Day Now accounts.</p></section>
+    <section class="list" id="acctList"></section>
+  </main>
+</div>
+
+<div class="dock"><nav aria-label="Sections">
+  <button type="button" id="tabNumbers" aria-current="page"><svg class="svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15v-4M12 15V7M17 15v-6"/></svg>Numbers</button>
+  <button type="button" id="tabQueue"><svg class="svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Queue</button>
+  <button type="button" id="tabAcct"><svg class="svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Accounts</button>
+</nav></div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter((k) => k != null && k !== false)); return n; };
+function toast(t) { const n = $("toast"); n.textContent = t; n.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (n.hidden = true), 2400); }
+const TZ = "America/Chicago", CF = "Cloudflare Developer Platform", D1 = "15a331e3-ea97-4ec6-bef8-b06dd44c890c";
+const CAP_USER = 1024 ** 3, CAP_TOTAL = 8 * 1024 ** 3, FREE_TIER = 10 * 1024 ** 3;
+const GB = (b) => (b / 1024 ** 3).toFixed(b < 1024 ** 3 / 10 ? 2 : 1) + " GB";
+const ago = (ms) => { const m = Math.round((Date.now() - ms) / 6e4); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+
+/* ── Numbers: read straight from Taglet's D1 through the Cloudflare connector ── */
+let mcp = null, stats = null, statsAt = 0, retried = false;
+const CF_COPY = {
+  needs_reauth: "Reconnect Cloudflare in claude.ai Settings → Connectors to see the numbers.",
+  server_not_connected: "Add the Cloudflare connector in claude.ai Settings → Connectors to see the numbers.",
+  not_in_manifest: "Cloudflare is turned off for this page. Turn it on in the page's Permissions.",
+  approval_required: "Allow this page to read Taglet's numbers from Cloudflare.",
+  blocked_by_policy: "Your organization blocks Cloudflare for this page.",
+};
+function showNote(code) {
+  const n = $("cfNote");
+  if (!code) { n.hidden = true; return; }
+  const ask = ["approval_required", "upstream_error", "server_unavailable", "tool_error", "not_in_manifest"].includes(code);
+  n.replaceChildren(el("span", { textContent: CF_COPY[code] || "Couldn't reach Cloudflare for the numbers." }), ask ? el("button", { type: "button", textContent: code === "approval_required" ? "Allow and load" : "Try again", onclick: () => loadStats(true) }) : null);
+  n.hidden = false;
+}
+async function q(sql) {
+  const r = await mcp.callTool(CF, "d1_database_query", { database_id: D1, sql }, { cache: false });
+  let p = r.payload; if (typeof p === "string") { try { p = JSON.parse(p); } catch {} }
+  return (Array.isArray(p) ? p[0] : p)?.results?.[0] || null;
+}
+async function loadStats(byTap = false) {
+  if (!mcp) return;
+  const week = Date.now() - 7 * 864e5;
+  try {
+    const a = await q(`SELECT (SELECT COUNT(*) FROM users) AS users, (SELECT COUNT(*) FROM users WHERE created_at > ${week}) AS week, (SELECT COUNT(*) FROM user_data) AS libs`);
+    let b = null; try { b = await q("SELECT (SELECT COUNT(*) FROM audio) AS songs, (SELECT COALESCE(SUM(size), 0) FROM audio) AS bytes, (SELECT COALESCE(MAX(n), 0) FROM (SELECT SUM(size) AS n FROM audio GROUP BY user_id)) AS biggest"); } catch {}
+    if (!a) throw Object.assign(new Error("empty"), { code: "tool_error" });
+    stats = { ...a, ...(b || { songs: 0, bytes: 0, biggest: 0 }) }; statsAt = Date.now(); showNote(null);
+  } catch (e) {
+    showNote(e?.code || "upstream_error");
+    if (e?.retryable && !retried && !byTap) { retried = true; setTimeout(() => loadStats(), (e.retryAfterMs || 1500) + Math.random() * 1000); }
+  }
+  renderNumbers();
+}
+function renderNumbers() {
+  const tile = (n, label) => el("div", { className: "tile" }, el("b", { textContent: n }), el("span", { textContent: label }));
+  $("tiles").replaceChildren(...(stats ? [tile(stats.users, "Accounts"), tile(stats.week, "New this week"), tile(stats.libs, "Synced libraries"), tile(stats.songs, "Songs stored")] : [tile("–", "Accounts"), tile("–", "New this week"), tile("–", "Synced libraries"), tile("–", "Songs stored")]));
+  $("numState").textContent = stats ? `Live from Taglet's database, ${ago(statsAt)}.` : "Live numbers need the Cloudflare connector. The queue and accounts work without it.";
+  $("live").textContent = stats ? "Updated " + ago(statsAt) : "";
+  const m = $("meter");
+  if (!stats) { m.replaceChildren(el("p", { className: "small", textContent: "Waiting for the database." })); return; }
+  const pct = Math.min(100, (stats.bytes / CAP_TOTAL) * 100);
+  const tone = pct >= 90 ? "bad" : pct >= 70 ? "warn" : "";
+  m.replaceChildren(
+    el("div", { className: "top" }, el("span", { textContent: `${GB(stats.bytes)} of ${GB(CAP_TOTAL)} Taglet allows` }), el("span", { textContent: Math.round(pct) + "%" })),
+    el("div", { className: `bar ${tone}`, role: "progressbar", ariaValueMin: "0", ariaValueMax: "100", ariaValueNow: String(Math.round(pct)), ariaLabel: "Audio storage used" }, el("i", { style: `width:${pct}%` })),
+    el("p", { className: "small", textContent: `R2 is free up to ${GB(FREE_TIER)}. Uploads stop at ${GB(CAP_TOTAL)} in all and ${GB(CAP_USER)} per account, so this can't reach a charge. Largest account: ${GB(stats.biggest)}.` }));
+}
+
+/* ── Queue ── */
+const PLATFORMS = { tiktok: "TikTok", reels: "Reels", shorts: "Shorts", linkedin: "LinkedIn", pinterest: "Pinterest", reddit: "Reddit" };
+const KINDS = { video: "Short video", post: "Post", reply: "Reply", pin: "Pin" };
+const STATUSES = [["draft", "To review"], ["approved", "Ready to post"], ["posted", "Posted"], ["skipped", "Skipped"]];
+let items = [], status = "draft", platform = "all", posts = null, assets = null, editing = null, postingId = null, uploadingId = null;
+try { status = localStorage.getItem("tq.status") || "draft"; platform = localStorage.getItem("tq.platform") || "all"; } catch {}
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+const fmtDay = (s) => { if (!s) return ""; const d = new Date(s + "T12:00:00"); return isNaN(d) ? s : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }); };
+function weekStart() { const d = new Date(); const wd = (d.getDay() + 6) % 7; d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - wd); return d.getTime(); }
+
+function renderOutput() {
+  const wk = items.filter((x) => x.status === "posted" && Date.parse(x.postedAt || "") >= weekStart());
+  const tile = (n, label) => el("div", { className: "tile" }, el("b", { textContent: n }), el("span", { textContent: label }));
+  $("postTiles").replaceChildren(tile(wk.filter((x) => x.kind === "video").length, "Video posts"), tile(wk.filter((x) => x.platform === "reddit").length, "Reddit replies"), tile(wk.filter((x) => x.platform === "linkedin").length, "LinkedIn posts"), tile(wk.filter((x) => x.platform === "pinterest").length, "Pins"));
+  const t = today();
+  const next = items.filter((x) => ["draft", "approved"].includes(x.status) && (x.when || "") >= t).sort((a, b) => String(a.when).localeCompare(String(b.when))).slice(0, 4);
+  $("upnext").replaceChildren(...(next.length ? next.map((x) => el("a", { href: "#queue", onclick: (e) => { e.preventDefault(); status = x.status; platform = "all"; go("queue"); } },
+    el("time", { dateTime: x.when, textContent: x.when === t ? "Today" : fmtDay(x.when).replace(/,.*/, "") }),
+    el("span", { className: "ttl", textContent: x.title || "Untitled" }), el("span", { className: "tag", textContent: PLATFORMS[x.platform] || x.platform })))
+    : [el("div", { className: "empty", style: "grid-template-columns:1fr;border:0", textContent: posts ? "Nothing scheduled yet. Add the first item in the Queue tab." : "The queue shows up here once it loads." })]));
+}
+function renderChips() {
+  const sc = $("statusChips"); sc.replaceChildren();
+  for (const [k, label] of STATUSES) {
+    const n = items.filter((x) => x.status === k && (platform === "all" || x.platform === platform)).length;
+    sc.append(el("button", { type: "button", className: "chip", ariaPressed: String(status === k), onclick: () => { status = k; try { localStorage.setItem("tq.status", k); } catch {} renderQueue(); } }, label, el("small", { textContent: n })));
+  }
+  const pc = $("platformChips"); pc.replaceChildren();
+  for (const [k, label] of [["all", "All"], ...Object.entries(PLATFORMS)]) pc.append(el("button", { type: "button", className: "chip", ariaPressed: String(platform === k), onclick: () => { platform = k; try { localStorage.setItem("tq.platform", k); } catch {} renderQueue(); } }, label));
+}
+async function write(id, patch, done) {
+  if (!posts) return toast("Saving isn't available in this view.");
+  try { await posts.doc(id).update({ ...patch, updated: new Date().toISOString() }); if (done) toast(done); }
+  catch (e) { toast(e?.code === "quota_exceeded" ? "The queue is full. Delete old skipped items first." : "Couldn't save. Try again."); }
+}
+function copy(text) { try { navigator.clipboard.writeText(text).then(() => toast("Copied"), () => toast("Select the text and copy it")); } catch { toast("Select the text and copy it"); } }
+function pickVideo(x) {
+  const inp = el("input", { type: "file", accept: "video/mp4,video/webm" });
+  inp.onchange = async () => {
+    const f = inp.files?.[0]; if (!f) return;
+    if (f.size > 20 * 1024 * 1024) return toast("That video is over 20 MB. Export a smaller copy (720p is plenty).");
+    uploadingId = x.id; renderQueue();
+    try { const r = await assets.upload(f, { type: f.type || "video/mp4" }); await write(x.id, { video: r.id, videoName: f.name }, "Video added"); }
+    catch (e) { toast({ too_large: "That video is over 20 MB.", unsupported_type: "Use an MP4 or WebM video.", quota_or_state: "Video storage is full. Remove old videos first.", rate_limited: "Too many uploads. Wait a minute." }[e?.code] || "Couldn't upload. Try again."); }
+    finally { uploadingId = null; renderQueue(); }
+  };
+  inp.click();
+}
+function card(x) {
+  const body = el("p", { className: "body clamp", textContent: x.body || "" });
+  const more = (x.body || "").length > 240 ? el("button", { type: "button", className: "ghost", textContent: "Show all", onclick: (e) => { body.classList.toggle("clamp"); e.target.textContent = body.classList.contains("clamp") ? "Show all" : "Show less"; } }) : null;
+  const target = x.target ? (/^https?:\/\//.test(x.target) ? el("a", { className: "link", href: x.target, target: "_blank", rel: "noopener", textContent: x.target }) : el("span", { className: "link", textContent: x.target })) : null;
+  const posted = x.postedUrl ? el("a", { className: "link", href: x.postedUrl, target: "_blank", rel: "noopener", textContent: "View the post" }) : null;
+  const acts = el("div", { className: "actions" });
+  const add = (label, fn, cls) => acts.append(el("button", { type: "button", className: cls || "", textContent: label, onclick: fn }));
+  if (postingId === x.id) {
+    const inp = el("input", { id: "postUrl-" + x.id, type: "url", placeholder: "Link to the live post (optional)" });
+    acts.append(el("form", { className: "field", style: "width:100%", onsubmit: (e) => { e.preventDefault(); postingId = null; write(x.id, { status: "posted", postedAt: new Date().toISOString(), postedUrl: inp.value.trim() || null }, "Marked as posted"); } },
+      el("label", { htmlFor: inp.id, textContent: "Where did it go live?" }), inp,
+      el("div", { className: "actions" }, el("button", { type: "submit", className: "primary", textContent: "Mark posted" }), el("button", { type: "button", className: "ghost", textContent: "Cancel", onclick: () => { postingId = null; renderQueue(); } }))));
+  } else {
+    if (x.body) add("Copy text", () => copy(x.body));
+    if (assets && x.kind === "video" && x.status !== "skipped") add(uploadingId === x.id ? "Uploading…" : x.video ? "Replace video" : "Add video", () => pickVideo(x), "ghost");
+    if (x.status === "draft") { add("Approve", () => write(x.id, { status: "approved" }, "Approved"), "primary"); add("Edit", () => openEditor(x)); add("Skip", () => write(x.id, { status: "skipped" }, "Skipped"), "ghost"); }
+    if (x.status === "approved") { add("Mark posted", () => { postingId = x.id; renderQueue(); }, "primary"); add("Edit", () => openEditor(x)); add("Back to review", () => write(x.id, { status: "draft" }), "ghost"); }
+    if (x.status === "posted") add("Undo", () => write(x.id, { status: "approved", postedAt: null, postedUrl: null }), "ghost");
+    if (x.status === "skipped") { add("Restore", () => write(x.id, { status: "draft" }, "Back in review")); add("Delete", () => { if (acts.dataset.confirm) posts.doc(x.id).delete().then(() => toast("Deleted"), () => toast("Couldn't delete. Try again.")); else { acts.dataset.confirm = "1"; acts.lastChild.textContent = "Tap again to delete"; } }, "ghost"); }
+  }
+  const video = x.video ? el("div", { className: "vidbox" },
+    el("video", { className: "video", src: "/_blob/" + x.video, controls: true, playsInline: true, preload: "metadata", onloadedmetadata: (e) => { const v = e.target; if (v.videoWidth > v.videoHeight) v.classList.add("wide"); }, onerror: (e) => e.target.replaceWith(el("small", { textContent: "This video was removed. Add it again." })) }),
+    x.videoName ? el("small", { className: "small", textContent: x.videoName }) : null) : null;
+  const image = x.image ? el("img", { className: "shot", src: "/_blob/" + x.image, alt: x.imageAlt || "", loading: "lazy", onerror: (e) => e.target.replaceWith(el("small", { textContent: "This picture was removed." })) }) : null;
+  const when = x.status === "posted" && x.postedAt ? "Posted " + fmtDay(new Date(x.postedAt).toLocaleDateString("en-CA", { timeZone: TZ })) : x.when ? "For " + fmtDay(x.when) : null;
+  return el("article", { className: "card" },
+    el("div", { className: "meta" }, el("span", { className: "tag " + x.status, textContent: Object.fromEntries(STATUSES)[x.status] || x.status }), el("span", { className: "tag", textContent: PLATFORMS[x.platform] || x.platform }), el("span", { textContent: KINDS[x.kind] || x.kind }), when && el("span", { textContent: when }), x.by === "claude" && el("span", { textContent: "Drafted by Claude" })),
+    el("h3", { textContent: x.title || "Untitled" }), video, image, x.body ? body : null, more, target, posted, x.notes ? el("p", { className: "cnote", textContent: x.notes }) : null, acts);
+}
+function renderQueue() {
+  renderChips(); renderOutput();
+  const shown = items.filter((x) => x.status === status && (platform === "all" || x.platform === platform)).sort((a, b) => status === "posted" ? String(b.postedAt).localeCompare(String(a.postedAt)) : String(a.when || "9").localeCompare(String(b.when || "9")));
+  const msg = { draft: "Nothing waiting for review. Ask Claude to draft posts, or add one with New item.", approved: "Nothing approved yet. Approve a draft and it shows up here.", posted: "Nothing posted with this filter yet.", skipped: "No skipped items." }[status];
+  $("list").replaceChildren(...(shown.length ? shown.map(card) : [el("div", { className: "empty", textContent: msg })]));
+}
+function openEditor(x) {
+  editing = x || null;
+  $("editorTitle").textContent = x ? "Edit item" : "New item";
+  $("fPlatform").value = x?.platform || (platform !== "all" ? platform : "tiktok");
+  $("fKind").value = x?.kind || "video"; $("fWhen").value = x?.when || today();
+  $("fTitle").value = x?.title || ""; $("fBody").value = x?.body || ""; $("fTarget").value = x?.target || ""; $("fNotes").value = x?.notes || "";
+  $("editor").hidden = false; $("fTitle").focus();
+}
+$("newBtn").onclick = () => openEditor(null);
+$("cancelBtn").onclick = () => { $("editor").hidden = true; editing = null; };
+$("editor").onsubmit = async (e) => {
+  e.preventDefault();
+  if (!posts) return toast("Saving isn't available in this view.");
+  const v = { platform: $("fPlatform").value, kind: $("fKind").value, when: $("fWhen").value || null, title: $("fTitle").value.trim(), body: $("fBody").value, target: $("fTarget").value.trim() || null, notes: $("fNotes").value.trim() || null };
+  $("saveBtn").disabled = true;
+  try {
+    if (editing) await write(editing.id, v, "Saved");
+    else { await posts.add({ ...v, status: "draft", by: "you", created: new Date().toISOString(), updated: new Date().toISOString() }); toast("Added to review"); status = "draft"; }
+    $("editor").hidden = true; editing = null;
+  } catch (err) { toast(err?.code === "quota_exceeded" ? "The queue is full. Delete old skipped items first." : "Couldn't save. Try again."); }
+  finally { $("saveBtn").disabled = false; }
+};
+
+/* ── Accounts: one doc per platform, so Claude can read which accounts exist and how they are connected ── */
+let accts = {}, acctCol = null;
+const ACCT_NOTES = { tiktok: "Posts go through TikTok Studio in Chrome, so just be signed in there.", reels: "Instagram Business account linked to a Facebook Page, then connected in Composio.", shorts: "Posts go through YouTube Studio in Chrome; sign in to the Taglet channel.", linkedin: "Connect in Composio, or post from your own profile.", pinterest: "Connect in Composio and note the board you'll pin to.", reddit: "Connect in Composio. Reddit is the touchiest platform, so go slowly." };
+function renderAccts() {
+  $("acctList").replaceChildren(...Object.entries(PLATFORMS).map(([k, label]) => {
+    const a = accts[k] || {};
+    const hid = "h-" + k, cid = "c-" + k;
+    const handle = el("input", { id: hid, maxlength: 80, value: a.handle || "", placeholder: "@handle or profile link", disabled: !acctCol,
+      onchange: () => save(k, { handle: handle.value.trim() }) });
+    const conn = el("input", { id: cid, type: "checkbox", checked: !!a.connected, disabled: !acctCol, onchange: () => save(k, { connected: conn.checked }) });
+    return el("article", { className: "card acct" },
+      el("div", {}, el("div", { className: "name", textContent: label }), el("p", { className: "small", textContent: ACCT_NOTES[k] })),
+      el("div", { className: "conn" }, conn, el("label", { htmlFor: cid, textContent: "Ready" })),
+      el("div", { className: "field" }, el("label", { htmlFor: hid, textContent: "Account" }), handle));
+  }));
+}
+async function save(k, patch) {
+  try { await acctCol.doc(k).set({ ...(accts[k] || {}), ...patch, updated: new Date().toISOString() }); } catch { toast("Couldn't save. Try again."); }
+}
+
+/* ── Tabs: #numbers, #queue, #accounts ── */
+function go(view, push = true) {
+  const v = ["queue", "accounts"].includes(view) ? view : "numbers";
+  $("numbersView").hidden = v !== "numbers"; $("queueView").hidden = v !== "queue"; $("acctView").hidden = v !== "accounts";
+  for (const [id, name] of [["tabNumbers", "numbers"], ["tabQueue", "queue"], ["tabAcct", "accounts"]]) $(id).setAttribute("aria-current", v === name ? "page" : "false");
+  if (push) try { history.replaceState(null, "", "#" + v); } catch {}
+  if (v === "queue") renderQueue(); if (v === "numbers") renderOutput();
+  scrollTo(0, 0);
+}
+$("tabNumbers").onclick = () => go("numbers"); $("tabQueue").onclick = () => go("queue"); $("tabAcct").onclick = () => go("accounts");
+
+renderNumbers(); renderOutput(); renderAccts();
+go(location.hash.slice(1), false);
+(async () => {
+  const use = (n) => (window.claude?.use?.(n) ?? Promise.resolve(null)).catch(() => null);
+  const [db, a, m] = await Promise.all([use("db"), use("assets"), use("mcp")]);
+  assets = a; mcp = m;
+  if (mcp) { loadStats(); setInterval(() => { if (document.visibilityState === "visible") loadStats(); }, 5 * 6e4); addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - statsAt > 6e4) loadStats(); }); }
+  if (!db) { $("state").textContent = "The queue can't load in this view. Open it from claude.ai to manage posts."; $("newBtn").disabled = true; return; }
+  posts = db.collection("posts"); acctCol = db.collection("accounts");
+  posts.onSnapshot((s) => { items = s.docs.map((d) => ({ id: d.id, ...d.data() })); $("state").hidden = true; renderQueue(); }, () => { $("state").hidden = false; $("state").textContent = "Lost the connection to the queue. Reload the page to reconnect."; });
+  acctCol.onSnapshot((s) => { accts = Object.fromEntries(s.docs.map((d) => [d.id, d.data()])); if (!document.activeElement?.closest?.("#acctList")) renderAccts(); });
+})();
+</script>
