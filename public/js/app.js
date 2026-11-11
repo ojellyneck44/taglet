@@ -996,7 +996,7 @@ async function publishShare(a) {
     let s = a.share;
     if (!s) {
       const r = await fetch("/api/share", { method: "POST" });
-      if (!r.ok) throw new Error("Couldn’t create a link. Check your connection and try again.");
+      if (!r.ok) throw new Error(r.status === 429 ? await r.text() : "Couldn’t create a link. Check your connection and try again.");
       const { id, token } = await r.json();
       const raw = newKeyBytes();
       s = { id, token, key: b64url(raw), url: shareUrl(id, raw) };
@@ -1005,6 +1005,7 @@ async function publishShare(a) {
     const put = async (part, bytes) => {
       const r = await fetch(`/api/share/${s.id}/${part}`, { method: "PUT", headers: { Authorization: `Bearer ${s.token}` }, body: await seal(key, bytes) });
       if (r.ok) return;
+      if (r.status === 429) throw new Error(await r.text());
       throw new Error(r.status === 413 ? "One of the songs is too big to share (the limit is 24 MB per song)."
         : r.status === 403 ? "This link was removed or has expired. Create a new one." : "The upload didn’t finish. Check your connection and try again.");
     };
