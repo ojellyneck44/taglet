@@ -103,7 +103,7 @@
       <div class="sync-card" id="syncCard" hidden>
         <svg aria-hidden="true"><use href="#i-cloud"/></svg>
         <div><strong>Keep these on all your devices</strong><p>Optional and free. Your albums, tags and covers sync; audio stays put.</p>
-          <div class="sync-actions"><button class="btn primary small" type="button" data-act="account">Sign in</button><button class="btn ghost small" type="button" data-act="syncLater">Not now</button></div></div>
+          <div class="sync-actions"><button class="btn ghost small" type="button" data-act="account">Sign in</button><button class="btn ghost small" type="button" data-act="syncLater">Not now</button></div></div>
       </div>
       <p class="shelf-foot">Songs group into albums by their album tags. To add songs to an album, open it and drop them in, or use Add songs. <a href="/spotify/">How to add finished files to Spotify</a></p>
     </nav>
@@ -140,8 +140,15 @@
         <h2 id="tracksTitle">Tracks</h2>
         <div class="tracks-tools">
           <button class="btn ghost small" type="button" data-act="renumber">Number in this order</button>
-          <button class="btn ghost small" type="button" data-act="addToAlbum"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add songs</span></button>
-          <button class="btn ghost small" type="button" data-act="fromLink"><svg aria-hidden="true"><use href="#i-link"/></svg><span>From a link</span></button>
+          <div class="add-wrap">
+            <button class="btn ghost small" type="button" data-act="addMenu" aria-haspopup="true" aria-expanded="false" aria-controls="addMenu"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add</span></button>
+            <div class="tint-menu glass add-menu" id="addMenu" role="menu" aria-label="Add songs" hidden>
+              <div class="menu-links">
+                <button type="button" role="menuitem" data-act="addToAlbum"><svg aria-hidden="true"><use href="#i-plus"/></svg>Songs from this device</button>
+                <button type="button" role="menuitem" data-act="fromLink"><svg aria-hidden="true"><use href="#i-link"/></svg>From a YouTube or SoundCloud link</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <ol class="tracks" id="tracks" aria-labelledby="tracksTitle"></ol>
@@ -326,9 +333,13 @@
         <div class="seg-row"><label><input type="radio" name="quality" value="320" checked><span>MP3 320 kbps<small>Best Spotify can play</small></span></label>
         <label><input type="radio" name="quality" value="v0"><span>MP3 V0<small>Near-identical, smaller</small></span></label></div>
       </fieldset>
-      <label class="switch block"><input type="checkbox" id="trimSilence"><span class="knob" aria-hidden="true"></span><span><strong>Trim silent edges</strong><small>Cuts true digital silence (quieter than −72 dB) from the very start and end. Music, fades and quiet intros are left alone. <span id="trimNote"></span></small></span></label>
-      <p class="hint">Encoder delay and padding are always handled: other formats are decoded gap-free and every MP3 keeps its gapless header. MP3s you add are only re-tagged, never re-encoded, unless you trim.</p>
-      <p class="why"><strong>Why MP3 and not WAV?</strong> Spotify plays WAV and FLAC on some computers but ignores their tags and art, and phones skip them. MP3 is the one format every Spotify app reads fully.</p>
+      <label class="switch block"><input type="checkbox" id="trimSilence"><span class="knob" aria-hidden="true"></span><span><strong>Trim silent edges</strong><small>Removes pure silence at the very start and end. <span id="trimNote"></span></small></span></label>
+      <details class="how">
+        <summary>How export works</summary>
+        <p><strong>Trimming</strong> only cuts true digital silence (quieter than −72 dB). Music, fades and quiet intros are left alone.</p>
+        <p><strong>Gaps</strong> are always handled: other formats are decoded gap-free and every MP3 keeps its gapless header. MP3s you add are only re-tagged, never re-encoded, unless you trim.</p>
+        <p><strong>Why MP3 and not WAV?</strong> Spotify plays WAV and FLAC on some computers but ignores their tags and art, and phones skip them. MP3 is the one format every Spotify app reads fully.</p>
+      </details>
     </div>
     <ol class="export-list" id="exportList" hidden></ol>
     <div class="sheet-actions" id="exportActions">

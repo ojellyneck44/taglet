@@ -592,7 +592,7 @@ document.addEventListener("keydown", (e) => {
     toast("Order changed. Tap “Number in this order” to renumber.");
   }
   if ((e.key === "Delete" || e.key === "Backspace") && el.classList?.contains("shelf-item")) { e.preventDefault(); current.album = el.dataset.albumId; actions.deleteAlbum(); return; }
-  if (e.key === "Escape") { $("#tintMenu").hidden = true; $('[data-act="tint"]').setAttribute("aria-expanded", "false"); }
+  if (e.key === "Escape") { $("#addMenu").hidden = true; $("#tintMenu").hidden = true; $('[data-act="tint"]').setAttribute("aria-expanded", "false"); }
 });
 
 // ---------------------------------------------------------------- clicks
@@ -670,6 +670,7 @@ const actions = {
   replaceAudio: () => $("#pickBuild").click(),
   install: async () => { const e = installEvent; installEvent = null; showInstallHint(); if (e) { e.prompt(); const r = await e.userChoice.catch(() => null); if (r?.outcome === "accepted") buzz(); } $("#installSheet")?.close(); },
   removeArt: () => { const a = cropTarget; if (a) { a.art = null; renderAll(); } $("#cropDialog").close(); },
+  addMenu: (btn) => { const m = $("#addMenu"); m.hidden = !m.hidden; btn.setAttribute("aria-expanded", String(!m.hidden)); if (!m.hidden) $("button", m).focus({ focusVisible: false }); },
   tint: (btn) => { const m = $("#tintMenu"); m.hidden = !m.hidden; btn.setAttribute("aria-expanded", String(!m.hidden)); if (!m.hidden) $("a", m).focus({ focusVisible: false }); },
   copyLink: async (btn) => { try { await navigator.clipboard.writeText(linkURL()); confirmCopied(btn); } catch { toast("Couldn’t copy. Type the code instead.", "err"); } },
   sendPick: () => $("#pickSend").click(),
@@ -707,6 +708,7 @@ document.addEventListener("click", (e) => {
   const close = e.target.closest("[data-close]");
   if (close) { close.closest("dialog").close(); return; }
   if (!e.target.closest("#tintMenu, [data-act=tint]")) $("#tintMenu").hidden = true;
+  if (!e.target.closest("[data-act=addMenu]")) { $("#addMenu").hidden = true; $('[data-act="addMenu"]').setAttribute("aria-expanded", "false"); }
 });
 
 $("#localChip").addEventListener("click", () => { const tip = $("#localTip"); tip.classList.toggle("show"); setTimeout(() => tip.classList.remove("show"), 5000); });
@@ -1077,8 +1079,8 @@ function trimNote() {
   const list = scopeAll ? [...tracks.values()] : a.trackIds.map((id) => tracks.get(id));
   const mp3s = list.filter((t) => t.codec === "mp3").length;
   $("#trimNote").textContent = !mp3s
-    ? "None of these are MP3s, so trimming costs nothing: they’re encoded once either way."
-    : `${mp3s === list.length ? (list.length === 1 ? "This is an MP3" : "These are all MP3s") : `${mp3s} of these are MP3s`}, so with trimming on ${mp3s === 1 ? "it’s" : "they’re"} encoded a second time instead of only re-tagged. A second 320 kbps pass is very hard to hear, but it isn’t lossless.`;
+    ? "Costs nothing here: these are encoded once either way."
+    : `${mp3s === list.length ? (list.length === 1 ? "This MP3 is" : "These MP3s are") : `${mp3s} MP3s are`} re-encoded once if you trim: very hard to hear, but not lossless.`;
 }
 document.addEventListener("change", (e) => { if (e.target.name === "scope") trimNote(); });
 
@@ -1640,3 +1642,6 @@ if ("serviceWorker" in navigator) {
     });
   }
 }
+
+// Choosing an item from the Add menu closes it (the action handler stops the click before the outside-click check).
+$("#addMenu").addEventListener("click", () => { $("#addMenu").hidden = true; $('[data-act="addMenu"]').setAttribute("aria-expanded", "false"); }, true);

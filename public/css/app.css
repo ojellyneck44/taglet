@@ -299,8 +299,6 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 44px; }
 .seg label:last-of-type span { border-radius: 0 12px 12px 0; margin-left: -1px; }
 .seg input:checked + span { background: var(--accent-soft); border-color: var(--accent); position: relative; }
 .seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-.why { margin-top: var(--s4); padding: var(--s3) var(--s4); border-radius: 12px; background: rgba(243,236,226,.04); font-size: var(--t-sm); color: var(--paper-2); }
-.why strong { color: var(--paper); }
 .export-done { margin-top: var(--s5); display: grid; gap: var(--s4); justify-items: start; }
 .export-done p { color: var(--paper-2); }
 
@@ -487,8 +485,10 @@ body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under
 .danger-zone { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line); }
 .danger-zone summary { cursor: pointer; font-size: var(--t-sm); font-weight: 600; color: var(--paper-2); min-height: 44px; display: flex; align-items: center; }
 .danger-zone .btn { margin-top: var(--s3); }
-.sync-card { display: flex; gap: var(--s3); margin-top: var(--s5); padding: var(--s4); border-radius: 16px; background: var(--accent-soft); font-size: var(--t-sm); }
-.sync-card > svg { width: 22px; height: 22px; flex: none; color: var(--accent); }
+.sync-card { display: flex; gap: var(--s3); margin-top: var(--s5); padding: var(--s4); border-radius: 16px; border: 1px solid var(--line); font-size: var(--t-sm); color: var(--paper-2); }
+.sync-card strong { color: var(--paper); font-weight: 600; }
+.sync-card [data-act="account"] { color: var(--accent); }
+.sync-card > svg { width: 20px; height: 20px; flex: none; color: var(--paper-3); }
 .sync-card p { color: var(--paper-2); font-size: var(--t-xs); margin-top: 2px; }
 .sync-actions { display: flex; gap: var(--s2); margin-top: var(--s3); flex-wrap: wrap; }
 .no-audio { font-family: var(--font-text); font-size: 0.7rem; font-weight: 600; color: var(--paper-2); padding: 3px 8px; border-radius: 99px; background: rgba(243,236,226,.07); white-space: nowrap; }
@@ -556,3 +556,23 @@ body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under
 /* Titles wrap onto more lines instead of being cut off mid-word (Enter still doesn't add a line). */
 textarea.autosize { display: block; resize: none; overflow: hidden; field-sizing: content; }
 .link-form input { text-overflow: ellipsis; }
+
+/* Export: details folded under one line */
+.how { margin-top: var(--s4); font-size: var(--t-sm); color: var(--paper-2); }
+.how summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--paper-2); list-style: none; }
+.how summary::-webkit-details-marker { display: none; }
+.how summary::after { content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; rotate: 45deg; translate: 0 -2px; transition: rotate var(--dur-fast) var(--ease-out); }
+.how[open] summary::after { rotate: 225deg; translate: 0 2px; }
+.how summary:hover { color: var(--paper); }
+.how p { margin-top: var(--s2); }
+.how strong { color: var(--paper); }
+
+/* Track list: one Add button with a menu */
+.add-wrap { position: relative; }
+.add-menu { right: 0; top: calc(100% + 6px); z-index: 30; min-width: 280px; transform-origin: top right; }
+.add-menu .menu-links button { gap: 10px; width: 100%; color: var(--paper); font-weight: 500; }
+.add-menu .menu-links button:hover { background: rgba(243,236,226,.08); }
+.add-menu svg { width: 18px; height: 18px; flex: none; color: var(--paper-3); }
+
+/* Desktop upload screen: the box fits its content and sits in the middle */
+@media (min-width: 900px) { .dropzone { align-self: center; } }
