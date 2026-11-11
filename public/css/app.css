@@ -529,3 +529,5 @@ body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under
   .welcome-actions .btn.big { min-height: 48px; }
   .formats { margin-top: var(--s2); }
 }
+
+.sheet:focus, .sheet:focus-visible { outline: none; }

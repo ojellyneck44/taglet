@@ -61,6 +61,10 @@ function openSheet(dlg) {
   if (!$(".sheet-handle", dlg)) inner.prepend(Object.assign(document.createElement("div"), { className: "sheet-handle" }));
   inner.scrollTop = 0;
   dlg.showModal();
+  // Focus the sheet itself, not its first button (the close ✕), which would show a focus ring after a tap.
+  // Tab still moves straight into the sheet, and screen readers start at its title.
+  dlg.tabIndex = -1;
+  dlg.focus({ preventScroll: true });
   staggerIn($$(".sheet-body > *, .steps-ol li, .auth-benefits li, .builds li", dlg));
   if (dlg.dataset.drag) return;
   dlg.dataset.drag = "1";
