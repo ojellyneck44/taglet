@@ -5,7 +5,7 @@ workers_dev = true
 
 [vars]
 # Email codes stay hidden until taglet.net is verified for sending; set to "on" (or remove) and deploy.
-EMAIL_SENDING = "off"
+EMAIL_SENDING = "on"
 
 routes = [
   { pattern = "taglet.net", custom_domain = true },

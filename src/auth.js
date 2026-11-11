@@ -141,7 +141,7 @@ export async function emailStart(env, rawEmail, take) {
       html: codeEmail(code),
     }),
   });
-  if (!r.ok) throw { status: 502, error: "email_failed" };
+  if (!r.ok) { console.log("resend refused", r.status, (await r.text()).slice(0, 300)); throw { status: 502, error: "email_failed" }; }
   return { ok: true };
 }
 
