@@ -437,3 +437,15 @@ body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under
   body[data-single][data-view="album"] .album-tools { order: 4; margin-bottom: var(--s6); }
   body[data-single][data-view="album"] #inspMain .pane-head { display: none; }
 }
+
+/* ---------- share sheet ---------- */
+.album-tools { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.share-ready { display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: var(--s5); align-items: start; }
+.share-buttons { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+#shareUrl { font-size: var(--t-xs); }
+@media (max-width: 899px) {
+  .share-ready { grid-template-columns: 1fr; justify-items: center; }
+  .share-ready .qr { width: 168px; }
+  .share-copy { width: 100%; }
+  .share-buttons .btn { flex: 1 1 auto; }
+}

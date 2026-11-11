@@ -1,6 +1,7 @@
 import { loadEngine, probe, render } from "./engine.js";
 import { buildKey, joinArtists, safeName, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
+import { b64url, unb64url, newKeyBytes, importKey, seal, shareUrl } from "./sharekit.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -351,6 +352,7 @@ function renderAlbum() {
   const single = singleAlbum(a);
   document.body.toggleAttribute("data-single", single);
   $("#deleteLabel").textContent = single ? "Delete track" : "Delete album";
+  $("#shareLabel").textContent = a.share ? "Shared" : "Share";
   $("#artBtn").setAttribute("aria-label", single ? "Change the track’s cover art" : "Change the album’s cover art");
   $("#backToAlbum").textContent = a.title || "Album";
 }
@@ -479,6 +481,11 @@ document.addEventListener("keydown", (e) => {
 const actions = {
   pick: () => { pickInto = null; $("#pickAudio").click(); },
   addToAlbum: () => { pickInto = current.album; $("#pickAudio").click(); },
+  share: () => openShare(),
+  shareCreate: () => publishShare(albums.get(current.album)),
+  shareStop: () => stopShare(albums.get(current.album)),
+  shareCopy: async () => { try { await navigator.clipboard.writeText($("#shareUrl").value); toast("Link copied."); buzz(); } catch { $("#shareUrl").select(); toast("Couldn’t copy automatically. The link is selected, so copy it from there.", "err"); } },
+  shareNative: async () => { const a = albums.get(current.album); try { await navigator.share({ title: shareTitle(a), url: $("#shareUrl").value }); } catch {} },
   deleteAlbum: () => {
     const a = albums.get(current.album);
     if (!a) return;
@@ -492,7 +499,9 @@ const actions = {
     if (current.album && (wide.matches || isSingle())) current.track = albums.get(current.album).trackIds[0];
     renderAll();
     setView(!albums.size ? "welcome" : wide.matches ? "album" : "shelf", -1);
-    toast(`Deleted “${name}”.`, "", { label: "Undo", run: () => {
+    // A deleted album's link goes too, once Undo is no longer offered (the toast lasts 7 seconds).
+    if (a.share) setTimeout(() => { if (!albums.has(a.id)) stopShare(a); }, 8000);
+    toast(`Deleted “${name}”${a.share ? ". Its share link stops working in a few seconds" : ""}.`, "", { label: "Undo", run: () => {
       const order = [...albums.entries()]; order.splice(at, 0, [a.id, a]);
       albums.clear(); for (const [k, v] of order) albums.set(k, v);
       for (const t of gone) tracks.set(t.id, t);
@@ -935,11 +944,110 @@ function setLinkLive(live, text) {
   $("#sendExports").hidden = !live || !lastExports.length;
 }
 
-function drawQR(text) {
+function drawQR(text, el = $("#qr")) {
   if (!window.qrcode) return;
   const qr = window.qrcode(0, "M");
   qr.addData(text); qr.make();
-  $("#qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+  el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+}
+
+// ---------------------------------------------------------------- share links
+
+const shareTitle = (a) => (singleAlbum(a) ? tracks.get(a.trackIds[0]).tags.title : a.title) || "Untitled";
+/** What a shared link would show: if this changes after sharing, the link is out of date. */
+const shareSig = (a) => JSON.stringify([a.title, a.albumArtist, a.year, a.genre, a.art?.blob.size || 0,
+  a.trackIds.map((id) => { const t = tracks.get(id); return [t.fileId, t.tags.title, t.tags.artists, t.tags.track, t.tags.disc]; })]);
+
+function openShare() {
+  const a = albums.get(current.album);
+  if (!a) return;
+  $("#shareTitle").textContent = singleAlbum(a) ? "Share track" : "Share album";
+  showShareState(a);
+  openSheet($("#shareDialog"));
+}
+
+function showShareState(a) {
+  const s = a.share;
+  $("#shareStart").hidden = !!s;
+  $("#shareReady").hidden = !s;
+  $("#shareProgress").hidden = true;
+  $("#shareLabel").textContent = s ? "Shared" : "Share";
+  if (!s) return;
+  $("#shareUrl").value = s.url;
+  drawQR(s.url, $("#shareQr"));
+  $('[data-act="shareNative"]').hidden = !navigator.share;
+  const until = new Date(s.at + 30 * 864e5).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  const stale = s.sig !== shareSig(a);
+  $("#shareMeta").textContent = stale
+    ? `You’ve changed this since you shared it. Update the link so it plays the latest version. It works until ${until}.`
+    : `Works until ${until}. Updating it restarts the 30 days.`;
+  $("#shareUpdate").classList.toggle("primary", stale);
+  $("#shareUpdate").classList.toggle("ghost", !stale);
+}
+
+async function publishShare(a) {
+  if (!a) return;
+  const list = a.trackIds.map((id) => tracks.get(id));
+  const ol = $("#shareProgress");
+  $("#shareStart").hidden = true; $("#shareReady").hidden = true; ol.hidden = false;
+  ol.innerHTML = list.map((t) => `<li class="xfer" data-x="${t.id}"><span>${esc(t.tags.title)}</span><span class="muted">Waiting</span><span class="bar"><i></i></span></li>`).join("");
+  busy++;
+  try {
+    let s = a.share;
+    if (!s) {
+      const r = await fetch("/api/share", { method: "POST" });
+      if (!r.ok) throw new Error("Couldn’t create a link. Check your connection and try again.");
+      const { id, token } = await r.json();
+      const raw = newKeyBytes();
+      s = { id, token, key: b64url(raw), url: shareUrl(id, raw) };
+    }
+    const key = await importKey(unb64url(s.key));
+    const put = async (part, bytes) => {
+      const r = await fetch(`/api/share/${s.id}/${part}`, { method: "PUT", headers: { Authorization: `Bearer ${s.token}` }, body: await seal(key, bytes) });
+      if (r.ok) return;
+      throw new Error(r.status === 413 ? "One of the songs is too big to share (the limit is 24 MB per song)."
+        : r.status === 403 ? "This link was removed or has expired. Create a new one." : "The upload didn’t finish. Check your connection and try again.");
+    };
+    if (a.art && !a.art.bytes) a.art.bytes = new Uint8Array(await a.art.blob.arrayBuffer());
+    if (a.art) await put("art", a.art.bytes);
+    const single = singleAlbum(a);
+    const meta = { v: 1, kind: single ? "single" : "album", title: shareTitle(a),
+      artist: single ? joinArtists(list[0].tags.artists) : a.albumArtist, year: a.year, genre: a.genre, art: !!a.art, tracks: [] };
+    for (const [i, t] of list.entries()) {
+      const row = $(`[data-x="${t.id}"]`, ol);
+      $(".muted", row).textContent = "Preparing";
+      const tags = tagsFor(t);
+      const res = await render(t, tags, a.art ? { bytes: a.art.bytes, mime: "image/jpeg" } : null, { quality: "320", trimSilence: false }, (p) => row.style.setProperty("--p", p * 0.7));
+      $(".muted", row).textContent = "Uploading";
+      await put(`t${i}`, res.bytes);
+      row.style.setProperty("--p", 1);
+      $(".muted", row).textContent = `${(res.bytes.length / 1048576).toFixed(1)} MB`;
+      const num = `${tags.discTotal > 1 ? `${tags.disc}-` : ""}${String(tags.track || 1).padStart(2, "0")}`;
+      meta.tracks.push({ title: t.tags.title, artists: tags.artists, track: tags.track, disc: tags.disc, duration: t.duration, size: res.bytes.length,
+        name: single ? `${safeName(`${joinArtists(tags.artists) ? joinArtists(tags.artists) + " - " : ""}${t.tags.title}`)}.mp3` : `${num} ${safeName(t.tags.title)}.mp3` });
+    }
+    await put("meta", new TextEncoder().encode(JSON.stringify(meta))); // last, so a half-finished upload never shows
+    a.share = { ...s, at: Date.now(), sig: shareSig(a) };
+    save(); buzz(12);
+    showShareState(a);
+    if (!$("#shareDialog").open) toast(`Link ready for “${shareTitle(a)}”.`);
+  } catch (err) {
+    toast(err.message || "Sharing failed.", "err");
+    showShareState(a);
+  } finally { busy--; maybeReload(); }
+}
+
+async function stopShare(a) {
+  const s = a?.share;
+  if (!s) return;
+  try {
+    const r = await fetch(`/api/share/${s.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${s.token}` } });
+    if (!r.ok && r.status !== 403) throw new Error();
+  } catch { toast("Couldn’t reach Taglet to remove the link. Try again when you’re online.", "err"); return; }
+  a.share = null;
+  save();
+  showShareState(a);
+  toast("Link removed. Anyone who opens it now sees that it’s gone.");
 }
 
 function transferRow(name, verb, p) {

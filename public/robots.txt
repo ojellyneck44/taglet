@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
 Disallow: /api/
+Disallow: /s/
 
 Sitemap: https://taglet.net/sitemap.xml

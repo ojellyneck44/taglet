@@ -17,6 +17,7 @@ Designed and built by Stevie McLane. Spotify is a trademark of Spotify AB; Tagle
 - **Link a device**: pair two browsers with a QR code or a 10-character code and send songs or images either way, end-to-end encrypted. The relay only sees ciphertext.
 - **New builds**: drop an updated render of a song you've already tagged (say `Night Drive v3 final.wav`) and Taglet matches it to the existing track by file name or title. You confirm, or pick a different track, before anything is replaced. The new audio keeps the track's title, artists, number, album and cover, so the re-export has the same name and tags and replaces the old file in Spotify instead of adding a duplicate. Each song's inspector also has a manual "New build" button, and every replacement can be undone.
 - **Saved on the device**: albums, tags, covers and audio are kept in IndexedDB, so they're still there next visit. There are no accounts yet.
+- **Share links**: share any album or single as a link. Songs are converted, then encrypted with AES-GCM on the device before upload. The key lives in the link's #fragment, so the server (Workers KV, 30-day expiry) only stores ciphertext. The share page decrypts in the browser, plays the songs and downloads them tagged. You can update or stop sharing from the app.
 - **Singles**: a one-song upload is edited as a track, with no album fields, and exports as a single MP3.
 - **Installs as an app** (PWA) on iPhone, Android and desktop, and works offline. On a phone browser, a sheet explains how to add it to the Home Screen; on Android it's a one-tap Install. Once installed, it behaves like a native app: no zoom, no pull-to-refresh, no stray text selection, a splash screen, bottom sheets you drag to dismiss, and safe-area insets. On Android it appears in the share menu.
 
@@ -33,7 +34,8 @@ public/
   sw.js, manifest.webmanifest     PWA (network-first shell, cache-first engine), Android share target
   vendor/core/core-0*.wasm        ffmpeg core split into three parts (Cloudflare's 25 MB asset limit)
   spotify/, privacy/, brand/      guide, privacy notes, live brand style sheet
-src/worker.js                     serves the site; /api/link/:room is a Durable Object relay
+src/worker.js                     serves the site; /api/link/:room is a Durable Object relay, /api/share stores encrypted shares in KV
+public/s/, js/share.js, sharekit.js  the shared-link page and its AES-GCM helpers
 docs/                             brand style sheet, competitor analysis
 ```
 

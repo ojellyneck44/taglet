@@ -22,3 +22,8 @@ class_name = "Room"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+# Shared albums and singles: encrypted on the sender's device, kept for 30 days.
+[[kv_namespaces]]
+binding = "SHARES"
+id = "c5f53ef5266443ed9a7077a650e73892"

@@ -121,7 +121,7 @@
             <label class="switch"><input type="checkbox" data-album="compilation"><span class="knob" aria-hidden="true"></span><span>Compilation</span></label>
           </div>
           <ul class="issues" id="issues"></ul>
-          <div class="album-tools"><button class="btn ghost small danger" type="button" data-act="deleteAlbum"><svg aria-hidden="true"><use href="#i-trash"/></svg><span id="deleteLabel">Delete album</span></button></div>
+          <div class="album-tools"><button class="btn ghost small" type="button" data-act="share"><svg aria-hidden="true"><use href="#i-share"/></svg><span id="shareLabel">Share</span></button><button class="btn ghost small danger" type="button" data-act="deleteAlbum"><svg aria-hidden="true"><use href="#i-trash"/></svg><span id="deleteLabel">Delete album</span></button></div>
         </div>
       </div>
       <div class="tracks-head">
@@ -237,6 +237,36 @@
     <div class="sheet-actions">
       <button class="btn ghost" type="button" data-builds="new">Add as new songs</button>
       <button class="btn primary" type="button" data-builds="replace" id="buildsGo">Replace audio</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Share a link to an album or single -->
+<dialog class="sheet glass" id="shareDialog" aria-labelledby="shareTitle">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h2 id="shareTitle">Share album</h2><button class="btn ghost icon-only" type="button" data-close aria-label="Close"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div id="shareStart">
+      <p class="hint-lg">Anyone with the link can play the songs and download them, tagged and ready for Spotify. Nobody needs an account.</p>
+      <p class="hint">Songs are encrypted on this device before they’re uploaded, and the key is part of the link, so Taglet can’t open them. Links last 30 days, and you can stop sharing at any time.</p>
+      <div class="sheet-actions"><button class="btn primary" type="button" data-act="shareCreate"><svg aria-hidden="true"><use href="#i-link"/></svg><span>Create link</span></button></div>
+    </div>
+    <ol class="export-list" id="shareProgress" hidden></ol>
+    <div id="shareReady" hidden>
+      <div class="share-ready">
+        <div class="qr" id="shareQr" role="img" aria-label="QR code for the share link"></div>
+        <div class="share-copy">
+          <label class="field"><span>Link</span><input id="shareUrl" class="mono" readonly></label>
+          <div class="share-buttons">
+            <button class="btn primary" type="button" data-act="shareCopy"><svg aria-hidden="true"><use href="#i-copy"/></svg><span>Copy link</span></button>
+            <button class="btn ghost" type="button" data-act="shareNative"><svg aria-hidden="true"><use href="#i-share"/></svg><span>Share…</span></button>
+          </div>
+          <p class="hint" id="shareMeta"></p>
+        </div>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn ghost danger" type="button" data-act="shareStop">Stop sharing</button>
+        <button class="btn ghost" type="button" data-act="shareCreate" id="shareUpdate">Update link</button>
+      </div>
     </div>
   </div>
 </dialog>
