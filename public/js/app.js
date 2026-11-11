@@ -2,12 +2,13 @@ import { loadEngine, probe, render } from "./engine.js";
 import { buildKey, joinArtists, safeName, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
 import { b64url, unb64url, newKeyBytes, importKey, seal, shareUrl } from "./sharekit.js";
+import { initAccount, onAccountChange, openAccount, schedulePush, syncCardHidden, hideSyncCard, accountAvailable } from "./account.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const wide = matchMedia("(min-width: 900px)");
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
-const uid = () => Math.random().toString(36).slice(2, 10);
+const uid = () => [...crypto.getRandomValues(new Uint8Array(10))].map((b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
 const fmtTime = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "");
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -23,7 +24,7 @@ if (standalone) {
 }
 addEventListener("load", () => setTimeout(() => $("#splash").classList.add("done"), 250));
 /** A light tap of feedback on Android; iOS has no vibration API for the web, so it's silent there. */
-const buzz = (ms = 8) => { try { navigator.vibrate?.(ms); } catch {} };
+const buzz = (ms = 8) => { try { if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(ms); } catch {} };
 
 // Sheets: centred on desktop; on phones they sit at the bottom with a grab handle, and dragging the handle or
 // header down closes them (past a quarter of the height, or a quick flick). Ported from Any Day Now's dom.js.
@@ -89,7 +90,11 @@ function setView(view, dir = 1) {
   const target = view === "welcome" || document.body.dataset.view === "welcome" ? null : wide.matches ? $("#inspector") : $("#workspace");
   if (target) target.style.viewTransitionName = "pane";
   document.documentElement.style.setProperty("--dir", dir);
-  const t = document.startViewTransition(apply);
+  // If the page isn't painting (a background or occluded window), the transition never starts: apply anyway.
+  let done = false;
+  const once = () => { if (!done) { done = true; apply(); } };
+  const t = document.startViewTransition(once);
+  setTimeout(() => { if (!done) { once(); t.skipTransition(); } }, 400);
   t.ready.catch(() => {}); // an aborted transition (tab hidden mid-way) still applies the update
   t.finished.catch(() => {}).finally(() => { if (target) target.style.viewTransitionName = ""; });
 }
@@ -129,7 +134,7 @@ async function importAudio(audio, source, opts) {
   }
   const touched = new Set();
   const batch = { loose: null }; // untagged files dropped together become one album
-  const builds = [], addedNow = new Set();
+  const builds = [], addedNow = new Set(), attached = [];
   let n = 0;
   audio.sort((a, b) => collator.compare(a.name, b.name));
   for (const file of audio) {
@@ -139,6 +144,8 @@ async function importAudio(audio, source, opts) {
       const info = await probe(file);
       // An updated render of a song that's already tagged: hold it back and ask before replacing anything.
       const target = opts.target ? tracks.get(opts.target) : findBuild(file, info, addedNow);
+      // A song synced from another device, waiting for its audio: attach it straight away, nothing to confirm.
+      if (target && !target.file) { replaceAudio(target, file, info, false); attached.push(target); touched.add(target.albumId); continue; }
       if (target) { builds.push({ file, info, target: target.id }); continue; }
       const t = newTrack(file, info);
       addedNow.add(t.id);
@@ -172,7 +179,10 @@ async function importAudio(audio, source, opts) {
   renderAll();
   if (!wide.matches && albums.size === 1 && document.body.dataset.view === "shelf") setView("album"); // skip a one-item list
   const added = addedNow.size;
-  if (replaced.length) {
+  if (attached.length && !replaced.length && !addedNow.size) {
+    buzz();
+    toast(`Audio added for ${attached.length === 1 ? `“${attached[0].tags.title}”` : `${attached.length} songs`}. ${attached.length === 1 ? "Its" : "Their"} tags came from your account.`);
+  } else if (replaced.length) {
     buzz(12);
     toast(`New ${replaced.length === 1 ? "build" : "builds"} swapped in for ${replaced.length === 1 ? `“${replaced[0][0].tags.title}”` : `${replaced.length} songs`}. Tags, cover and order stay the same.`, "", {
       label: "Undo",
@@ -187,7 +197,7 @@ async function importAudio(audio, source, opts) {
 let retryFiles = null;
 
 function newTrack(file, info) {
-  const t = { id: uid(), fileId: uid(), file, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
+  const t = { id: uid(), fileId: uid(), file, fileName: file.name, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
   tracks.set(t.id, t);
   return t;
 }
@@ -196,15 +206,15 @@ function findBuild(file, info, skip) {
   const keys = new Set([buildKey(file.name), buildKey(info.tags.title)].filter(Boolean));
   for (const t of tracks.values()) {
     if (skip.has(t.id)) continue;
-    if (keys.has(buildKey(t.file.name)) || keys.has(buildKey(t.tags.title))) return t;
+    if (keys.has(buildKey(t.file?.name || t.fileName)) || keys.has(buildKey(t.tags.title))) return t;
   }
   return null;
 }
 
 /** Swap in new audio, keep every tag, the cover and the album position. Returns what's needed to undo. */
-function replaceAudio(t, file, info) {
-  const prev = { file: t.file, fileId: t.fileId, codec: t.codec, sampleRate: t.sampleRate, duration: t.duration, build: t.build };
-  Object.assign(t, { file, fileId: uid(), codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, build: (t.build || 1) + 1 });
+function replaceAudio(t, file, info, newBuild = true) {
+  const prev = { file: t.file, fileId: t.fileId, fileName: t.fileName, codec: t.codec, sampleRate: t.sampleRate, duration: t.duration, build: t.build };
+  Object.assign(t, { file, fileId: uid(), fileName: file.name, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, build: newBuild ? (t.build || 1) + 1 : t.build });
   const a = albums.get(t.albumId);
   if (!a.art && info.art) setArt(a, info.art);
   const p = $("#player");
@@ -277,7 +287,7 @@ function tidyAlbum(a) {
     let next = 1;
     for (const t of list) if (!t.tags.track) { while (used.has(next)) next++; t.tags.track = next; used.add(next); }
   }
-  list.sort((x, y) => (x.tags.disc || 1) - (y.tags.disc || 1) || x.tags.track - y.tags.track || collator.compare(x.file.name, y.file.name));
+  list.sort((x, y) => (x.tags.disc || 1) - (y.tags.disc || 1) || x.tags.track - y.tags.track || collator.compare(x.file?.name || x.fileName || "", y.file?.name || y.fileName || ""));
   a.trackIds = list.map((t) => t.id);
   if (!a.albumArtist) a.albumArtist = mostCommonArtist(a);
 }
@@ -331,6 +341,7 @@ function renderShelf() {
     </button></li>`;
   }).join("");
   updateExport();
+  renderSyncCard();
   save();
 }
 
@@ -365,7 +376,7 @@ function renderTracks(a) {
       <button class="grip" type="button" aria-label="Move ${esc(t.tags.title)}. Use arrow keys.">${icon("grip")}</button>
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
       <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}${t.build ? `<span class="build-tag">build ${t.build}</span>` : ""}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
-      <span class="dur">${fmtTime(t.duration)}</span>
+      <span class="dur">${t.file ? fmtTime(t.duration) : `<span class="no-audio" title="Synced from another device. Add the file here to play or export it.">No audio here</span>`}</span>
     </li>`;
   }).join("");
 }
@@ -393,7 +404,8 @@ function renderInspector() {
   for (const input of $$("[data-track]")) {
     if (document.activeElement !== input) input.value = t.tags[input.dataset.track] || "";
   }
-  $("#inspFile").textContent = `${t.file.name}${t.build ? ` · build ${t.build}` : ""}`;
+  $("#inspFile").textContent = t.file ? `${t.file.name}${t.build ? ` · build ${t.build}` : ""}` : "No audio here";
+  $('[data-act="replaceAudio"] span').textContent = t.file ? "New build" : "Add audio";
   $("#inspFile").title = `${t.codec.toUpperCase()} · ${(t.sampleRate / 1000).toFixed(1)} kHz`;
   renderArtists(t);
   const others = ["composer", "bpm", "isrc", "publisher", "copyright", "comment", "lyrics"].filter((k) => String(t.tags[k] || "").trim());
@@ -482,6 +494,8 @@ const actions = {
   pick: () => { pickInto = null; $("#pickAudio").click(); },
   addToAlbum: () => { pickInto = current.album; $("#pickAudio").click(); },
   share: () => openShare(),
+  account: () => { $("#tintMenu").hidden = true; openAccount(); },
+  syncLater: () => { hideSyncCard(); renderSyncCard(); },
   shareCreate: () => publishShare(albums.get(current.album)),
   shareStop: () => stopShare(albums.get(current.album)),
   shareCopy: async () => { try { await navigator.clipboard.writeText($("#shareUrl").value); toast("Link copied."); buzz(); } catch { $("#shareUrl").select(); toast("Couldn’t copy automatically. The link is selected, so copy it from there.", "err"); } },
@@ -494,6 +508,7 @@ const actions = {
     const name = singleAlbum(a) ? gone[0].tags.title || "Untitled track" : a.title || "Untitled album";
     for (const t of gone) tracks.delete(t.id);
     albums.delete(a.id);
+    deleted[a.id] = Date.now();
     current.album = [...albums.keys()][Math.min(at, albums.size - 1)] || null;
     current.track = null;
     if (current.album && (wide.matches || isSingle())) current.track = albums.get(current.album).trackIds[0];
@@ -505,6 +520,7 @@ const actions = {
       const order = [...albums.entries()]; order.splice(at, 0, [a.id, a]);
       albums.clear(); for (const [k, v] of order) albums.set(k, v);
       for (const t of gone) tracks.set(t.id, t);
+      delete deleted[a.id];
       current.album = a.id; current.track = wide.matches || singleAlbum(a) ? a.trackIds[0] : null;
       renderAll(); setView("album");
     } });
@@ -538,6 +554,7 @@ const actions = {
   preview: async () => {
     const p = $("#player"), t = tracks.get(current.track);
     if (!p.paused) { p.pause(); return; }
+    if (!t.file) { toast("This song’s audio is on another device. Add the file here to play it.", "err"); return; }
     if (!p.src) p.src = URL.createObjectURL(t.file);
     try { await p.play(); } catch { toast(`This browser can’t play ${(t.file.name.match(/\.(\w+)$/)?.[1] || t.codec).toUpperCase()} files directly. It still converts fine.`); }
   },
@@ -682,10 +699,14 @@ async function setArtFromFile(file, album) {
   renderAll();
 }
 
-function setArt(album, blob) {
+function setArt(album, blob, hash = null) {
   if (album.art?.url && ![...albums.values()].some((x) => x !== album && x.art?.url === album.art.url)) URL.revokeObjectURL(album.art.url);
-  album.art = { blob, url: URL.createObjectURL(blob), bytes: null };
-  blob.arrayBuffer().then((b) => { album.art.bytes = new Uint8Array(b); });
+  const art = album.art = { blob, url: URL.createObjectURL(blob), bytes: null, hash };
+  // The fingerprint lets the account store each cover once.
+  blob.arrayBuffer().then(async (b) => {
+    art.bytes = new Uint8Array(b);
+    if (!art.hash) { art.hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", b))].map((x) => x.toString(16).padStart(2, "0")).join(""); save(); }
+  });
 }
 
 function loadImage(file) {
@@ -859,6 +880,7 @@ async function runExport(mode) {
     const row = $(`[data-x="${t.id}"]`, ol);
     const a = albums.get(t.albumId);
     const tags = tagsFor(t);
+    if (!t.file) { failed++; row.classList.add("err"); $(".muted", row).textContent = "Audio is on another device"; continue; }
     $(".muted", row).textContent = t.codec === "mp3" && !opts.trimSilence ? "Re-tagging" : "Converting";
     try {
       const res = await render(t, tags, a.art?.bytes ? { bytes: a.art.bytes, mime: "image/jpeg" } : null, opts, (p) => row.style.setProperty("--p", p));
@@ -988,6 +1010,7 @@ function showShareState(a) {
 async function publishShare(a) {
   if (!a) return;
   const list = a.trackIds.map((id) => tracks.get(id));
+  if (list.some((t) => !t.file)) { toast("Some of these songs’ audio is on another device. Add the files here first, then share.", "err"); return; }
   const ol = $("#shareProgress");
   $("#shareStart").hidden = true; $("#shareReady").hidden = true; ol.hidden = false;
   ol.innerHTML = list.map((t) => `<li class="xfer" data-x="${t.id}"><span>${esc(t.tags.title)}</span><span class="muted">Waiting</span><span class="bar"><i></i></span></li>`).join("");
@@ -1203,18 +1226,24 @@ async function idb(store, mode, fn) {
 }
 
 let saveTimer = 0, restored = false;
+let deleted = {}; // album id -> when it was deleted, so a deletion on one device reaches the others
+/** Everything about an album that syncs; when it changes, the album's change time moves on. */
+const albumSig = (a) => JSON.stringify([a.title, a.albumArtist, a.year, a.genre, !!a.compilation, a.art?.hash || null, a.trackIds,
+  a.trackIds.map((id) => { const t = tracks.get(id); return t && [t.tags, t.build || 0, t.file?.name || t.fileName]; })]);
 function save() { if (!restored) return; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
 async function saveNow() {
+  for (const a of albums.values()) { const sig = albumSig(a); if (a.sig !== sig) { a.sig = sig; a.updatedAt = Date.now(); } }
+  schedulePush();
   try {
     await idb("kv", "readwrite", (s) => s.put({
-      v: 1, current: { ...current },
-      albums: [...albums.values()].map((a) => ({ ...a, art: a.art ? { blob: a.art.blob } : null })),
+      v: 1, current: { ...current }, deleted,
+      albums: [...albums.values()].map((a) => ({ ...a, art: a.art ? { blob: a.art.blob, hash: a.art.hash } : null })),
       tracks: [...tracks.values()].map(({ file, ...t }) => t),
     }, "state"));
     const stored = await idb("files", "readonly", (s) => s.getAllKeys());
     const want = new Set([...tracks.values()].map((t) => t.fileId));
     await idb("files", "readwrite", (s) => {
-      for (const t of tracks.values()) if (!stored.includes(t.fileId)) s.put(t.file, t.fileId);
+      for (const t of tracks.values()) if (t.file && !stored.includes(t.fileId)) s.put(t.file, t.fileId);
       for (const k of stored) if (!want.has(k)) s.delete(k);
     });
   } catch { /* storage full or blocked (private mode): the session still works, it just won't be kept */ }
@@ -1228,14 +1257,15 @@ async function restore() {
       const r = s.openCursor();
       r.onsuccess = () => { const c = r.result; if (c) { files.set(c.key, c.value); c.continue(); } };
     });
-    for (const t of state.tracks) if (files.has(t.fileId)) tracks.set(t.id, { ...t, file: files.get(t.fileId) });
+    deleted = state.deleted || {};
+    for (const t of state.tracks) tracks.set(t.id, { ...t, file: files.get(t.fileId) || null });
     for (const a of state.albums) {
       a.trackIds = a.trackIds.filter((id) => tracks.has(id));
       if (!a.trackIds.length) continue;
-      const art = a.art?.blob;
+      const art = a.art;
       a.art = null;
       albums.set(a.id, a);
-      if (art) setArt(a, art);
+      if (art?.blob) setArt(a, art.blob, art.hash || null);
     }
     if (!albums.size) return;
     current.album = albums.has(state.current?.album) ? state.current.album : [...albums.keys()][0];
@@ -1244,7 +1274,70 @@ async function restore() {
     setView(wide.matches || albums.size === 1 ? "album" : "shelf");
   } catch {}
 }
-restore().finally(() => { restored = true; navigator.storage?.persist?.().catch(() => {}); });
+// ---------------------------------------------------------------- account sync
+
+function getLibrary() {
+  return {
+    albums: [...albums.values()].map((a) => ({ id: a.id, title: a.title, albumArtist: a.albumArtist, year: a.year, genre: a.genre, compilation: !!a.compilation,
+      trackIds: a.trackIds, cover: a.art?.hash || null, updatedAt: a.updatedAt || Date.now() })),
+    tracks: [...tracks.values()].map((t) => ({ id: t.id, albumId: t.albumId, fileName: t.file?.name || t.fileName || "", codec: t.codec,
+      sampleRate: t.sampleRate, duration: t.duration, build: t.build, tags: t.tags })),
+    deleted,
+  };
+}
+
+/** Merge the account's library into this device's: album by album the newer copy wins, deletions included. */
+async function applyLibrary(remote, covers) {
+  let changedAny = false;
+  for (const [id, ts] of Object.entries(remote.deleted || {})) {
+    deleted[id] = Math.max(deleted[id] || 0, ts);
+    const a = albums.get(id);
+    if (a && (a.updatedAt || 0) <= ts) { for (const tid of a.trackIds) tracks.delete(tid); albums.delete(id); changedAny = true; }
+  }
+  for (const R of remote.albums || []) {
+    if ((deleted[R.id] || 0) >= R.updatedAt) continue;
+    const L = albums.get(R.id);
+    if (L && (L.updatedAt || 0) >= R.updatedAt) continue;
+    for (const rt of (remote.tracks || []).filter((t) => t.albumId === R.id)) {
+      const lt = tracks.get(rt.id);
+      if (lt) Object.assign(lt, { tags: rt.tags, build: rt.build, albumId: R.id }, lt.file ? {} : { fileName: rt.fileName, codec: rt.codec, sampleRate: rt.sampleRate, duration: rt.duration });
+      else tracks.set(rt.id, { ...rt, fileId: uid(), file: null }); // tags only, until the audio is added here
+    }
+    if (L) for (const tid of L.trackIds) if (!R.trackIds.includes(tid)) tracks.delete(tid);
+    const a = L || { id: R.id, art: null };
+    Object.assign(a, { title: R.title, albumArtist: R.albumArtist, year: R.year, genre: R.genre, compilation: R.compilation, trackIds: R.trackIds.filter((id) => tracks.has(id)) });
+    if (!L) albums.set(a.id, a);
+    if (R.cover && a.art?.hash !== R.cover && covers[R.cover]) { const blob = await covers[R.cover]().catch(() => null); if (blob) setArt(a, blob, R.cover); }
+    if (!R.cover && a.art) a.art = null;
+    a.updatedAt = R.updatedAt;
+    a.sig = albumSig(a);
+    changedAny = true;
+  }
+  if (!changedAny) return;
+  if (!albums.has(current.album)) { current.album = [...albums.keys()][0] || null; current.track = null; }
+  if (current.album && !current.track && (wide.matches || isSingle())) current.track = albums.get(current.album).trackIds[0] || null;
+  renderAll();
+  if (!albums.size) setView("welcome");
+  else if (document.body.dataset.view === "welcome") setView(wide.matches || albums.size === 1 ? "album" : "shelf");
+  save();
+}
+
+onAccountChange((user) => {
+  $$('[data-act="account"]').forEach((b) => {
+    if (!b.closest("#syncCard")) b.hidden = !accountAvailable();
+    const label = $("span", b) || b;
+    label.textContent = user ? "Synced" : "Sign in";
+    b.setAttribute("aria-label", user ? `Account: ${user.email || user.name || "signed in"}. Your albums sync.` : "Sign in to keep your albums on every device (optional)");
+  });
+  renderSyncCard();
+});
+function renderSyncCard() { $("#syncCard").hidden = !accountAvailable() || syncCardHidden() || !albums.size; }
+
+restore().finally(() => {
+  restored = true;
+  navigator.storage?.persist?.().catch(() => {});
+  initAccount({ openSheet, toast, icon, getLibrary, applyLibrary, coverBlob: (id) => albums.get(id)?.art?.blob || null });
+});
 
 {
   const m = location.hash.match(/link=([0-9A-Za-z-]{10,11})/);

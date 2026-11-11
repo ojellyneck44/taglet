@@ -3,6 +3,7 @@
 // - /api/share stores shared albums for 30 days, encrypted on the sender's device; the key lives in the link's
 //   #fragment, which browsers never send to a server.
 import { DurableObject } from "cloudflare:workers";
+import * as auth from "./auth.js";
 
 const SHARE_TTL = 30 * 24 * 60 * 60; // seconds
 const MAX_PART = 24 * 1024 * 1024; // KV values top out at 25 MiB
@@ -26,6 +27,7 @@ export default {
       return env.ROOMS.get(env.ROOMS.idFromName(m[1])).fetch(req);
     }
     if (url.pathname.startsWith("/api/share")) return share(req, env, url);
+    if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/account/")) return account(req, env, url);
     if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
     return env.ASSETS.fetch(req);
   },
@@ -35,10 +37,10 @@ const text = (body, status) => new Response(body, { status, headers: { "Content-
 const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
 const rand = (n, abc) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => abc[b % abc.length]).join("");
 
-/** Spend `amount` from today's allowance for `scope`; false when it would go over. */
-async function take(env, scope, amount, limit) {
-  const day = new Date().toISOString().slice(0, 10);
-  return env.QUOTA.get(env.QUOTA.idFromName(`${scope}:${day}`)).take(amount, limit);
+/** Spend `amount` from this period's allowance for `scope` (per day, or per hour); false when it would go over. */
+async function take(env, scope, amount, limit, per = "day") {
+  const period = new Date().toISOString().slice(0, per === "hour" ? 13 : 10);
+  return env.QUOTA.get(env.QUOTA.idFromName(`${scope}:${period}`)).take(amount, limit);
 }
 function tooMany(message) {
   const midnight = new Date(); midnight.setUTCHours(24, 0, 0, 0);
@@ -88,6 +90,81 @@ async function share(req, env, url) {
     return new Response(null, { status: 204 });
   }
   return text("Not found", 404);
+}
+
+// Accounts (same design as Any Day Now):
+//   GET  /api/auth/me → { user, providers }        POST /api/auth/email/start { email }, /email/verify { email, code }
+//   GET  /api/auth/apple | google | github → provider sign-in, then …/callback (Apple's is a form POST)
+//   POST /api/auth/logout, /api/auth/delete
+//   GET/PUT /api/account/library                   the synced library (albums, tags, order, cover references)
+//   GET/PUT /api/account/cover/:sha256             cover images, stored once each
+async function account(req, env, url) {
+  const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...extra } });
+  const withCookie = (res, c) => { res.headers.append("set-cookie", c); return res; };
+  const route = url.pathname.replace(/^\/api\//, "");
+  const method = req.method;
+  const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+  try {
+    if (route === "auth/me" && method === "GET") {
+      const user = await auth.currentUser(env, req);
+      const res = json({ user: auth.publicUser(user), providers: auth.providers(env) });
+      const renewed = await auth.renewSession(env, req, user).catch(() => null);
+      return renewed ? withCookie(res, renewed) : res;
+    }
+    const provider = route.match(/^auth\/(apple|google|github)$/)?.[1];
+    if (provider && method === "GET") {
+      if (!auth.providers(env)[provider]) return json({ error: "not_configured" }, 503);
+      return auth.oauthStart(env, req, provider);
+    }
+    const back = route.match(/^auth\/(apple|google|github)\/callback$/)?.[1];
+    if (back && (method === "GET" || (back === "apple" && method === "POST"))) return auth.oauthCallback(env, req, back);
+
+    // Covers are binary; everything else that changes state is same-origin JSON.
+    const cover = route.match(/^account\/cover\/([0-9a-f]{64})$/)?.[1];
+    if (cover) {
+      const user = await auth.currentUser(env, req);
+      if (!user) return json({ error: "signed_out" }, 401);
+      if (method === "GET") {
+        const data = await auth.getCover(env, user, cover);
+        return data ? new Response(new Uint8Array(data), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } }) : new Response(null, { status: 204 });
+      }
+      if (method === "PUT") {
+        const origin = req.headers.get("origin");
+        if (origin && origin !== url.origin) return json({ error: "forbidden" }, 403);
+        await auth.putCover(env, user, cover, await req.arrayBuffer());
+        return new Response(null, { status: 204 });
+      }
+    }
+    if (route === "account/library" && method === "GET") {
+      const user = await auth.currentUser(env, req);
+      return user ? json(await auth.readLibrary(env, user)) : json({ error: "signed_out" }, 401);
+    }
+    if (!["POST", "PUT"].includes(method)) return json({ error: "not_found" }, 404);
+    if (!auth.sameOrigin(req)) return json({ error: "forbidden" }, 403);
+    const body = await req.json().catch(() => ({}));
+    if (route === "account/library" && method === "PUT") {
+      const user = await auth.currentUser(env, req);
+      return user ? json(await auth.writeLibrary(env, user, body)) : json({ error: "signed_out" }, 401);
+    }
+    if (route === "auth/email/start") {
+      if (!(await take(env, `login-ip:${ip}`, 1, 10, "hour"))) return json({ error: "rate_limited" }, 429);
+      return json(await auth.emailStart(env, body.email, (scope, limit) => take(env, scope, 1, limit, "hour")));
+    }
+    if (route === "auth/email/verify") {
+      const { user, setCookie } = await auth.emailVerify(env, body.email, body.code);
+      return withCookie(json({ user: auth.publicUser(user) }), setCookie);
+    }
+    if (route === "auth/logout") { await auth.signOut(env, req); return withCookie(json({ ok: true }), auth.clearCookie()); }
+    if (route === "auth/delete") {
+      const user = await auth.currentUser(env, req);
+      if (!user) return json({ error: "signed_out" }, 401);
+      await auth.deleteAccount(env, user);
+      return withCookie(json({ ok: true }), auth.clearCookie());
+    }
+    return json({ error: "not_found" }, 404);
+  } catch (e) {
+    return json({ error: e?.error || "server_error" }, e?.status || 500);
+  }
 }
 
 /** One counter per scope per day. It deletes itself a day later, so nothing about anyone is kept. */

@@ -35,3 +35,12 @@ new_sqlite_classes = ["Quota"]
 [[kv_namespaces]]
 binding = "SHARES"
 id = "c5f53ef5266443ed9a7077a650e73892"
+
+# Accounts: users, sessions and each person's synced library (no audio).
+# Sign-in options turn on when their secrets are set (npx wrangler secret put NAME):
+#   RESEND_API_KEY (+ optional EMAIL_FROM) for email codes; GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET;
+#   GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET; APPLE_CLIENT_ID + APPLE_TEAM_ID + APPLE_KEY_ID + APPLE_PRIVATE_KEY.
+[[d1_databases]]
+binding = "DB"
+database_name = "taglet"
+database_id = "15a331e3-ea97-4ec6-bef8-b06dd44c890c"
