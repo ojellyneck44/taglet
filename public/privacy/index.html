@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy · Taglet</title>
+<meta name="description" content="Taglet converts and tags your music inside your browser. Your files are never uploaded. Here is exactly what does and doesn't leave your device.">
+<link rel="canonical" href="https://taglet.net/privacy/">
+<meta name="theme-color" content="#0b0a09">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:title" content="Taglet privacy">
+<meta property="og:url" content="https://taglet.net/privacy/">
+<meta property="og:image" content="https://taglet.net/og.png">
+<link rel="stylesheet" href="/css/base.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="doc-bar glass">
+  <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#i-mark"/></svg><span>taglet</span></a>
+  <a class="btn primary small" href="/">Open Taglet</a>
+</header>
+<main class="doc" id="main">
+  <h1>Your music stays with you</h1>
+  <p class="lede">Taglet is built so it never needs your files. Reading, converting, tagging, cropping and zipping all happen inside your browser, on your device.</p>
+
+  <h2>What happens on your device</h2>
+  <p>When you add a song, your browser reads it straight from your disk. Taglet uses ffmpeg, compiled to WebAssembly, to read tags and convert audio. The first time you add a file, your browser downloads that engine (about 10 MB compressed) from taglet.net and keeps it, so it works offline afterwards. Cover art is cropped on a canvas in the page. Finished files are handed back to you as a download or through your device’s share sheet.</p>
+  <p>None of this sends your audio, art, titles or file names anywhere. You can check: open your browser’s network tools while you convert, and you’ll see no uploads.</p>
+
+  <h2>Linking a device</h2>
+  <p>Link a device is the one feature that moves files over the internet, and only when you send something. The pairing code is turned into an encryption key on each device. Files are encrypted with AES-GCM before they leave, pass through a small relay on Cloudflare, and are decrypted on the other device. The relay sees only a scrambled room name and encrypted bytes. It can’t read them and stores nothing. The code is part of the QR link after the <strong>#</strong>, which browsers never send to a server.</p>
+
+  <h2>What we don’t do</h2>
+  <ul>
+    <li>No accounts, no sign-in.</li>
+    <li>No analytics, tracking pixels, ads or third-party scripts.</li>
+    <li>No cookies. Your accent colour is kept in your browser’s local storage, and that’s all.</li>
+  </ul>
+
+  <h2>Hosting</h2>
+  <p>taglet.net is served by Cloudflare. Like any web host, Cloudflare handles standard request data such as IP addresses to deliver pages and stop abuse. Taglet doesn’t log or keep it.</p>
+
+  <h2>Questions</h2>
+  <p>Taglet is a project by Stevie McLane. The code is open on <a href="https://github.com/ojellyneck44/taglet">GitHub</a>, so you can read exactly what it does.</p>
+  <p class="muted">Last updated November 2026.</p>
+</main>
+<footer class="site-foot">
+  <a href="/">Taglet</a><a href="/spotify/">Adding files to Spotify</a><a href="/brand/">Brand</a><span>Made by Stevie McLane</span>
+</footer>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="i-mark" viewBox="0 0 32 32"><path d="M12.2 3.5h7.6c1.2 0 2.2 1 2.2 2.2v4l4.4 5.4c.4.5.6 1.1.6 1.7v9.5c0 1.6-1.3 2.9-2.9 2.9H7.9C6.3 29.2 5 27.9 5 26.3v-9.5c0-.6.2-1.2.6-1.7L10 9.7v-4c0-1.2 1-2.2 2.2-2.2Z" fill="currentColor" transform="rotate(-14 16 16)"/><circle cx="16" cy="13" r="2.3" fill="#0b0a09" transform="rotate(-14 16 16)"/></symbol></defs></svg>
+<script src="/js/doc.js"></script>
+</body>
+</html>

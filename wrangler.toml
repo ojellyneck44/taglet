@@ -1,0 +1,24 @@
+name = "taglet"
+main = "src/worker.js"
+compatibility_date = "2026-06-01"
+workers_dev = true
+
+routes = [
+  { pattern = "taglet.net", custom_domain = true },
+  { pattern = "www.taglet.net", custom_domain = true },
+]
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+not_found_handling = "404-page"
+# Only /api/ runs code; every other request is a plain static file.
+run_worker_first = ["/api/*"]
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

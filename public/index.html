@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en" data-tint="manila">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Taglet: tag and convert your music for Spotify Local Files</title>
+<meta name="description" content="Convert any audio file to a Spotify-ready MP3, fix titles, artists and cover art, and group tracks into one album. Runs in your browser; nothing is uploaded.">
+<link rel="canonical" href="https://taglet.net/">
+<meta name="theme-color" content="#0b0a09">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Taglet">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Taglet">
+<meta property="og:title" content="Taglet: your files, tagged right for Spotify">
+<meta property="og:description" content="Convert, tag and group your own music into albums for Spotify Local Files. Runs on your device; nothing is uploaded.">
+<meta property="og:url" content="https://taglet.net/">
+<meta property="og:image" content="https://taglet.net/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/hanken.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/bricolage.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/app.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"Taglet","url":"https://taglet.net/","applicationCategory":"MultimediaApplication","operatingSystem":"Any (web browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Convert audio to Spotify-ready MP3s, edit tags and cover art, and group tracks into albums, all inside the browser.","creator":{"@type":"Person","name":"Stevie McLane"}}
+</script>
+</head>
+<body data-view="welcome">
+<a class="skip" href="#main">Skip to the editor</a>
+<div class="ambient" aria-hidden="true"><img id="ambient" alt="" hidden></div>
+
+<header class="topbar glass" role="banner">
+  <a class="wordmark" href="/" aria-label="Taglet home">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#i-mark"/></svg>
+    <span>taglet</span>
+  </a>
+  <button class="local-chip" type="button" id="localChip" aria-describedby="localTip">
+    <svg aria-hidden="true"><use href="#i-lock"/></svg><span>On this device</span>
+  </button>
+  <div class="tip" id="localTip" role="tooltip">Your songs and art are read and converted inside this browser. Nothing is uploaded. Linking a device sends files end-to-end encrypted.</div>
+  <nav class="top-actions" aria-label="Actions">
+    <button class="btn ghost" type="button" data-act="link"><svg aria-hidden="true"><use href="#i-link"/></svg><span>Link a device</span></button>
+    <button class="btn ghost icon-only" type="button" data-act="tint" aria-label="Accent color" aria-haspopup="true" aria-expanded="false"><svg aria-hidden="true"><use href="#i-drop"/></svg></button>
+    <button class="btn primary" type="button" data-act="export" disabled><svg aria-hidden="true"><use href="#i-export"/></svg><span>Export</span></button>
+  </nav>
+  <div class="tint-menu glass" id="tintMenu" role="menu" hidden>
+    <p class="tint-label" id="tintLabel">Accent</p>
+    <div class="swatches" role="group" aria-labelledby="tintLabel">
+      <button role="menuitemradio" data-tint="manila" aria-checked="true"><i></i>Manila</button>
+      <button role="menuitemradio" data-tint="coral" aria-checked="false"><i></i>Coral</button>
+      <button role="menuitemradio" data-tint="pool" aria-checked="false"><i></i>Pool</button>
+      <button role="menuitemradio" data-tint="orchid" aria-checked="false"><i></i>Orchid</button>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+  <!-- First run: the whole window is the drop target. -->
+  <section class="welcome" id="welcome" aria-labelledby="welcomeTitle">
+    <div class="hang" aria-hidden="true">
+      <!-- string and tag swing together from a hook above the screen, like a pendulum -->
+      <div class="pendulum" id="bigTag">
+        <span class="string"></span>
+        <div class="tag-big">
+          <span class="eyelet"></span>
+          <span class="tag-lines"><b>Title</b><b>Artist, Artist</b><b>Album · 01/12</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="welcome-copy">
+      <h1 id="welcomeTitle">Your own songs, tagged right for Spotify.</h1>
+      <p class="lede">Drop in audio from anywhere. Taglet turns it into MP3s that Spotify’s Local Files reads properly, with clean titles, every artist, cover art and albums that stay together. It all happens in this browser, so nothing is uploaded.</p>
+      <div class="welcome-actions">
+        <button class="btn primary big" type="button" data-act="pick"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Choose songs</span></button>
+        <button class="btn ghost big" type="button" data-act="link"><svg aria-hidden="true"><use href="#i-link"/></svg><span>Get them from another device</span></button>
+      </div>
+      <p class="formats">Works with WAV, FLAC, AIFF, ALAC, M4A, OGG, Opus, WMA and MP3. <span class="drop-hint">Or drop files anywhere on this page.</span></p>
+    </div>
+  </section>
+
+  <div class="workspace" id="workspace" hidden>
+    <h1 class="sr-only">Taglet editor</h1>
+    <nav class="shelf" id="shelf" aria-labelledby="shelfTitle">
+      <div class="pane-head">
+        <h2 id="shelfTitle">Albums</h2>
+        <button class="btn ghost small" type="button" data-act="pick"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add songs</span></button>
+      </div>
+      <p class="engine" id="engine" hidden></p>
+      <ul class="shelf-list" id="shelfList"></ul>
+      <p class="shelf-foot">Albums group by album name and album artist. To move a song, open it and pick another album. <a href="/spotify/">How to add finished files to Spotify</a></p>
+    </nav>
+
+    <section class="album" id="album" aria-labelledby="albumTitleLabel">
+      <button class="back" type="button" data-back="shelf"><svg aria-hidden="true"><use href="#i-back"/></svg><span>Albums</span></button>
+      <div class="album-head">
+        <div class="art-wrap">
+          <button class="art" type="button" id="artBtn" aria-label="Change cover art">
+            <img id="artImg" alt="" hidden>
+            <span class="art-empty"><svg aria-hidden="true"><use href="#i-image"/></svg><span>Add cover art</span></span>
+          </button>
+          <div class="check-tag" id="checkTag" aria-live="polite">
+            <span class="eyelet"></span><span id="checkText">Checking…</span>
+          </div>
+        </div>
+        <div class="album-fields">
+          <label class="sr-only" for="fAlbum" id="albumTitleLabel">Album title</label>
+          <input class="album-title" id="fAlbum" data-album="title" placeholder="Album title" autocomplete="off" spellcheck="false">
+          <div class="field-row">
+            <label class="field"><span>Album artist</span><input data-album="albumArtist" placeholder="Who the album is by" autocomplete="off" spellcheck="false"></label>
+            <label class="field narrow"><span>Year</span><input data-album="year" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
+          </div>
+          <div class="field-row">
+            <label class="field"><span>Genre</span><input data-album="genre" placeholder="Optional" autocomplete="off" list="genres"></label>
+            <label class="switch"><input type="checkbox" data-album="compilation"><span class="knob" aria-hidden="true"></span><span>Compilation</span></label>
+          </div>
+          <ul class="issues" id="issues"></ul>
+        </div>
+      </div>
+      <div class="tracks-head">
+        <h2 id="tracksTitle">Tracks</h2>
+        <button class="btn ghost small" type="button" data-act="renumber">Number in this order</button>
+      </div>
+      <ol class="tracks" id="tracks" aria-labelledby="tracksTitle"></ol>
+    </section>
+
+    <aside class="inspector" id="inspector" aria-labelledby="inspTitle">
+      <div class="insp-view" id="inspMain">
+        <button class="back" type="button" data-back="album"><svg aria-hidden="true"><use href="#i-back"/></svg><span id="backToAlbum">Album</span></button>
+        <div class="pane-head"><h2 id="inspTitle">Track</h2><span class="muted mono" id="inspFile"></span></div>
+        <label class="field"><span>Title</span><input data-track="title" autocomplete="off" spellcheck="false"></label>
+        <fieldset class="artists">
+          <legend>Artists</legend>
+          <ol id="artistList"></ol>
+          <div class="artist-tools">
+            <button class="btn ghost small" type="button" data-act="addArtist"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add artist</span></button>
+            <button class="btn ghost small" type="button" data-act="artistsAll">Use for every track</button>
+          </div>
+          <p class="preview">Spotify shows <strong id="artistPreview">—</strong></p>
+        </fieldset>
+        <div class="field-row">
+          <label class="field narrow"><span>Track</span><input data-track="track" inputmode="numeric" autocomplete="off"></label>
+          <label class="field narrow"><span>Disc</span><input data-track="disc" inputmode="numeric" autocomplete="off"></label>
+          <div class="field"><label for="moveAlbum">Album</label>
+            <select id="moveAlbum" aria-describedby="moveHint"></select>
+          </div>
+        </div>
+        <p class="hint" id="moveHint">Pick another album to move this song there.</p>
+        <button class="row-link" type="button" data-go="other"><span><strong>Other tags</strong><span class="muted" id="otherSummary">Composer, lyrics, BPM, ISRC…</span></span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <div class="insp-foot">
+          <button class="btn ghost small" type="button" data-act="preview"><svg aria-hidden="true"><use href="#i-play"/></svg><span>Play</span></button>
+          <button class="btn ghost small danger" type="button" data-act="remove"><svg aria-hidden="true"><use href="#i-trash"/></svg><span>Remove</span></button>
+        </div>
+        <audio id="player" preload="none"></audio>
+      </div>
+
+      <div class="insp-view" id="inspOther" hidden>
+        <button class="back" type="button" data-back="track"><svg aria-hidden="true"><use href="#i-back"/></svg><span>Track</span></button>
+        <div class="pane-head"><h2>Other tags</h2></div>
+        <p class="hint">Spotify ignores most of these, but other players and your own library will thank you.</p>
+        <label class="field"><span>Composer</span><input data-track="composer" autocomplete="off"></label>
+        <div class="field-row">
+          <label class="field"><span>BPM</span><input data-track="bpm" inputmode="numeric" autocomplete="off"></label>
+          <label class="field"><span>ISRC</span><input data-track="isrc" autocomplete="off" spellcheck="false" placeholder="USABC2600001"></label>
+        </div>
+        <label class="field"><span>Publisher or label</span><input data-track="publisher" autocomplete="off"></label>
+        <label class="field"><span>Copyright</span><input data-track="copyright" autocomplete="off"></label>
+        <label class="field"><span>Comment</span><input data-track="comment" autocomplete="off"></label>
+        <label class="field"><span>Lyrics</span><textarea data-track="lyrics" rows="6"></textarea></label>
+      </div>
+      <p class="insp-empty" id="inspEmpty">Pick a track to edit its title, artists and number.</p>
+    </aside>
+  </div>
+</main>
+
+<!-- Cover crop -->
+<dialog class="sheet glass" id="cropDialog" aria-labelledby="cropTitle">
+  <form method="dialog" class="sheet-inner">
+    <div class="sheet-head"><h2 id="cropTitle">Cover art</h2><button class="btn ghost icon-only" value="cancel" aria-label="Close"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="cropper" id="cropper" tabindex="0" aria-label="Crop area. Drag or use arrow keys to move, plus and minus to zoom.">
+      <img id="cropImg" alt="" draggable="false" hidden>
+      <div class="crop-grid" aria-hidden="true"></div>
+    </div>
+    <label class="zoom"><svg aria-hidden="true"><use href="#i-minus"/></svg><input type="range" id="cropZoom" min="1" max="4" step="0.01" value="1" aria-label="Zoom"><svg aria-hidden="true"><use href="#i-plus"/></svg></label>
+    <p class="hint" id="cropInfo">Cropped to a square automatically. Drag to choose what shows.</p>
+    <div class="sheet-actions">
+      <button class="btn ghost" type="button" data-act="pickArt">Choose another image</button>
+      <button class="btn ghost" type="button" data-act="removeArt">Remove</button>
+      <button class="btn primary" value="ok" id="cropOk">Use this cover</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Link a device -->
+<dialog class="sheet glass" id="linkDialog" aria-labelledby="linkTitle">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h2 id="linkTitle">Link a device</h2><button class="btn ghost icon-only" type="button" data-close aria-label="Close"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="link-pair" id="linkPair">
+      <div class="qr" id="qr" role="img" aria-label="QR code for the pairing link"></div>
+      <div class="link-copy">
+        <p>Scan this with your other phone or computer’s camera, or open <strong>taglet.net</strong> there and type the code.</p>
+        <p class="code mono" id="linkCode" aria-label="Pairing code"></p>
+        <button class="btn ghost small" type="button" data-act="copyLink"><svg aria-hidden="true"><use href="#i-copy"/></svg><span>Copy link</span></button>
+        <form class="join" id="joinForm">
+          <label for="joinCode">Have a code from another device?</label>
+          <div class="join-row"><input id="joinCode" class="mono" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCDE-FGHJK" maxlength="11"><button class="btn ghost" type="submit">Join</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="link-live" id="linkLive" hidden>
+      <p class="link-status" id="linkStatus" aria-live="polite"></p>
+      <button class="drop-send" type="button" data-act="sendPick">
+        <svg aria-hidden="true"><use href="#i-export"/></svg>
+        <span><strong>Send songs or images</strong><span class="muted">They land in Taglet on the other device. Images become cover art.</span></span>
+      </button>
+      <button class="btn ghost small" type="button" data-act="sendExports" id="sendExports" hidden>Send the finished MP3s instead</button>
+      <ul class="transfers" id="transfers"></ul>
+    </div>
+    <p class="fineprint">Files pass through Taglet’s relay encrypted with a key made from the code. The relay can’t open them, and keeps nothing.</p>
+  </div>
+</dialog>
+
+<!-- Export -->
+<dialog class="sheet glass wide" id="exportDialog" aria-labelledby="exportTitle">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h2 id="exportTitle">Export for Spotify</h2><button class="btn ghost icon-only" type="button" data-close aria-label="Close"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="export-setup" id="exportSetup">
+      <fieldset class="seg" id="scope">
+        <legend>What to export</legend>
+        <div class="seg-row"><label><input type="radio" name="scope" value="album" checked><span id="scopeAlbum">This album</span></label>
+        <label><input type="radio" name="scope" value="all"><span id="scopeAll">Everything</span></label></div>
+      </fieldset>
+      <fieldset class="seg">
+        <legend>Quality</legend>
+        <div class="seg-row"><label><input type="radio" name="quality" value="320" checked><span>MP3 320 kbps<small>Best Spotify can play</small></span></label>
+        <label><input type="radio" name="quality" value="v0"><span>MP3 V0<small>Near-identical, smaller</small></span></label></div>
+      </fieldset>
+      <label class="switch block"><input type="checkbox" id="trimSilence"><span class="knob" aria-hidden="true"></span><span><strong>Trim silent edges</strong><small>Cuts dead air at the start and end. MP3s are then re-encoded, which costs a little quality.</small></span></label>
+      <p class="hint">Encoder delay and padding are always handled: other formats are decoded gap-free and every MP3 keeps its gapless header. MP3s you add are only re-tagged, never re-encoded, unless you trim.</p>
+      <p class="why"><strong>Why MP3 and not WAV?</strong> Spotify plays WAV and FLAC on some computers but ignores their tags and art, and phones skip them. MP3 is the one format every Spotify app reads fully.</p>
+    </div>
+    <ol class="export-list" id="exportList" hidden></ol>
+    <div class="sheet-actions" id="exportActions">
+      <button class="btn ghost" type="button" data-act="exportEach">Save one by one</button>
+      <button class="btn primary" type="button" data-act="exportZip"><svg aria-hidden="true"><use href="#i-zip"/></svg><span>Save as zip</span></button>
+    </div>
+    <div class="export-done" id="exportDone" hidden>
+      <p id="exportDoneText"></p>
+      <a class="btn primary" href="/spotify/">How to add them to Spotify</a>
+    </div>
+  </div>
+</dialog>
+
+<nav class="dock glass" aria-label="Quick actions">
+  <button type="button" data-act="pick"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add</span></button>
+  <button type="button" data-act="link"><svg aria-hidden="true"><use href="#i-link"/></svg><span>Link</span></button>
+  <button type="button" data-act="export" class="dock-primary" disabled><svg aria-hidden="true"><use href="#i-export"/></svg><span>Export</span></button>
+</nav>
+
+<div class="dropveil" id="dropveil" aria-hidden="true"><p>Let go to add</p></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<input type="file" id="pickAudio" accept="audio/*,.flac,.wav,.aif,.aiff,.m4a,.alac,.ogg,.oga,.opus,.wma,.ape,.wv,.mp3" multiple hidden>
+<input type="file" id="pickImage" accept="image/*" hidden>
+<input type="file" id="pickSend" multiple hidden>
+<datalist id="genres"><option>Alternative</option><option>Ambient</option><option>Classical</option><option>Country</option><option>Electronic</option><option>Folk</option><option>Hip-Hop</option><option>Indie</option><option>Jazz</option><option>Metal</option><option>Pop</option><option>R&amp;B</option><option>Rock</option><option>Soundtrack</option></datalist>
+
+<footer class="site-foot">
+  <a href="/spotify/">Adding files to Spotify</a>
+  <a href="/privacy/">Privacy</a>
+  <a href="/brand/">Brand</a>
+  <span>Made by Stevie McLane</span>
+</footer>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-mark" viewBox="0 0 32 32"><path d="M12.2 3.5h7.6c1.2 0 2.2 1 2.2 2.2v4l4.4 5.4c.4.5.6 1.1.6 1.7v9.5c0 1.6-1.3 2.9-2.9 2.9H7.9C6.3 29.2 5 27.9 5 26.3v-9.5c0-.6.2-1.2.6-1.7L10 9.7v-4c0-1.2 1-2.2 2.2-2.2Z" fill="currentColor" transform="rotate(-14 16 16)"/><circle cx="16" cy="13" r="2.3" fill="var(--ink-0)" transform="rotate(-14 16 16)"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="5" width="12.5" height="9" rx="1.6"/><path d="M1.8 17.5h14.5"/><rect x="17.2" y="8" width="5" height="11" rx="1.4"/></g></symbol>
+    <symbol id="i-export" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5"/><path d="M4.5 15.5v2.7c0 1.2 1 2.3 2.3 2.3h10.4c1.3 0 2.3-1.1 2.3-2.3v-2.7"/></g></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></g></symbol>
+    <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5c3.2 4 6 7.2 6 10.6a6 6 0 0 1-12 0c0-3.4 2.8-6.6 6-10.6Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.5 5.5 6.5 6.5-6.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><circle cx="9" cy="9" r="1.7"/><path d="m20.5 15.5-4.8-4.8L6 20.5"/></g></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l.9 12.2c.1 1 .9 1.8 1.9 1.8h5.4c1 0 1.8-.8 1.9-1.8L17.5 7"/></g></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.8v12.4c0 .7.8 1.1 1.4.7l9.4-6.2c.5-.4.5-1.1 0-1.5L9.4 5c-.6-.4-1.4 0-1.4.8Z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><g fill="currentColor"><rect x="7" y="5.5" width="3.6" height="13" rx="1"/><rect x="13.4" y="5.5" width="3.6" height="13" rx="1"/></g></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="9" cy="7" r="1.4"/><circle cx="15" cy="7" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="17" r="1.4"/><circle cx="15" cy="17" r="1.4"/></g></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5M12 16.3v.2"/></g></symbol>
+    <symbol id="i-zip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H7.3c-1.1 0-2 .9-2 2v13c0 1.1.9 2 2 2h9.4c1.1 0 2-.9 2-2V8.2L14 3.5Z"/><path d="M11 3.5v2h2v2h-2v2h2v2h-2"/><rect x="10" y="14" width="4" height="3.5" rx=".8"/></g></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></g></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></g></symbol>
+  </defs>
+</svg>
+<script src="/vendor/motion-12.43.0.js" defer></script>
+<script src="/vendor/qrcode.js" defer></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

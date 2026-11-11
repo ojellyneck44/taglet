@@ -1,0 +1,139 @@
+/* Taglet tokens and shared type. See docs/brand.md for the reasoning behind each value. */
+@font-face { font-family: "Bricolage"; src: url("/fonts/bricolage.woff2") format("woff2-variations"); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "Hanken"; src: url("/fonts/hanken.woff2") format("woff2-variations"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "JB Mono"; src: url("/fonts/jbmono.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+
+:root {
+  color-scheme: dark;
+  /* Ink: warm near-blacks, so album art and the accent carry the colour. */
+  --ink-0: #0b0a09;
+  --ink-1: #141210;
+  --ink-2: #1c1916;
+  --ink-3: #27231f;
+  --line: rgba(243, 236, 226, 0.09);
+  --line-strong: rgba(243, 236, 226, 0.16);
+  /* Paper: warm whites for text. */
+  --paper: #f3ece2;
+  --paper-2: #bdb4a7;
+  --paper-3: #8e867b;
+  /* Accent (themeable, like Evertag). Manila is the default: the colour of a paper tag. */
+  --accent: #ecca8e;
+  --accent-ink: #1b1408;
+  --accent-soft: rgba(236, 202, 142, 0.14);
+  --signal: #ff7558;          /* problems and destructive actions only */
+  --signal-soft: rgba(255, 117, 88, 0.14);
+
+  --font-display: "Bricolage", "Hanken", ui-sans-serif, system-ui, sans-serif;
+  --font-text: "Hanken", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JB Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Type scale: 1.25 steps from a 16px body. */
+  --t-xs: 0.78rem; --t-sm: 0.875rem; --t-md: 1rem; --t-lg: 1.25rem; --t-xl: 1.6rem; --t-2xl: 2.15rem; --t-3xl: clamp(2.4rem, 5.6vw, 4.1rem);
+  /* Spacing: 4px base. */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px;
+  --r-row: 10px; --r-field: 9px; --r-art: 5px; --r-sheet: 26px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+}
+[data-tint="coral"]  { --accent: #ff9b7a; --accent-ink: #2a0f06; --accent-soft: rgba(255, 155, 122, 0.14); }
+[data-tint="pool"]   { --accent: #8fd0ec; --accent-ink: #06202b; --accent-soft: rgba(143, 208, 236, 0.14); }
+[data-tint="orchid"] { --accent: #e2b0ee; --accent-ink: #24102b; --accent-soft: rgba(226, 176, 238, 0.14); }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background: var(--ink-0); }
+body {
+  margin: 0; min-height: 100dvh; background: var(--ink-0); color: var(--paper);
+  font: 400 var(--t-md)/1.5 var(--font-text); font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 650; line-height: 1.08; letter-spacing: -0.022em; margin: 0; text-wrap: balance; }
+p { margin: 0; text-wrap: pretty; }
+a { color: var(--accent); text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+img, svg { display: block; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+input, textarea { caret-color: var(--accent); }
+* { scrollbar-width: thin; scrollbar-color: var(--ink-3) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--ink-3); border-radius: 10px; border: 3px solid var(--ink-0); }
+[hidden] { display: none !important; }
+.mono { font-family: var(--font-mono); font-size: 0.92em; letter-spacing: 0; }
+.muted { color: var(--paper-2); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.skip { position: absolute; left: var(--s4); top: -100px; z-index: 100; background: var(--accent); color: var(--accent-ink); padding: var(--s2) var(--s4); border-radius: 99px; font-weight: 600; text-decoration: none; }
+.skip:focus { top: var(--s3); }
+
+/* Liquid Glass: only on the floating control layer (bars, menus, sheets), never on content. */
+.glass {
+  position: relative; isolation: isolate;
+  background: linear-gradient(180deg, rgba(48, 43, 38, 0.62), rgba(26, 23, 20, 0.58));
+  -webkit-backdrop-filter: blur(22px) saturate(1.7) brightness(1.05);
+  backdrop-filter: blur(22px) saturate(1.7) brightness(1.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 250, 240, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    inset 0 0 0 0.5px rgba(255, 250, 240, 0.12),
+    0 10px 30px -8px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.glass::before { /* the specular edge that makes it read as a lens rather than frosted plastic */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  background: radial-gradient(120% 90% at 18% -10%, rgba(255, 248, 235, 0.13), transparent 55%);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  min-height: 44px; padding: 0 var(--s4); border-radius: 999px; border: 0; cursor: pointer;
+  font-weight: 600; font-size: var(--t-sm); letter-spacing: 0.005em; white-space: nowrap; text-decoration: none;
+  transition: transform 0.25s var(--ease-out), background-color 0.2s, color 0.2s, opacity 0.2s;
+}
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn:active:not(:disabled) { transform: scale(0.96); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover:not(:disabled) { background: color-mix(in oklab, var(--accent), white 14%); }
+.btn.ghost { background: rgba(243, 236, 226, 0.07); color: var(--paper); }
+.btn.ghost:hover:not(:disabled) { background: rgba(243, 236, 226, 0.13); }
+.btn.small { min-height: 36px; padding: 0 var(--s3); font-size: var(--t-xs); }
+.btn.small svg { width: 16px; height: 16px; }
+.btn.big { min-height: 52px; padding: 0 var(--s5); font-size: var(--t-md); }
+.btn.icon-only { padding: 0; width: 44px; }
+.btn.danger { color: var(--signal); }
+
+/* Pages that are documents (guide, privacy, brand) */
+.doc { max-width: 720px; margin: 0 auto; padding: calc(96px + env(safe-area-inset-top)) var(--s4) var(--s8); }
+.doc h1 { font-size: var(--t-3xl); margin-bottom: var(--s5); }
+.doc h2 { font-size: var(--t-xl); margin: var(--s7) 0 var(--s3); }
+.doc h3 { font-size: var(--t-lg); margin: var(--s5) 0 var(--s2); }
+.doc p, .doc li { color: var(--paper-2); max-width: 66ch; }
+.doc p + p { margin-top: var(--s3); }
+.doc strong { color: var(--paper); font-weight: 600; }
+.doc ol, .doc ul { padding-left: 1.3em; display: grid; gap: var(--s2); }
+.doc .lede { font-size: var(--t-lg); color: var(--paper); line-height: 1.45; }
+.doc-bar {
+  position: fixed; top: calc(var(--s3) + env(safe-area-inset-top)); left: 50%; translate: -50% 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--s2); padding: 5px 5px 5px var(--s4); border-radius: 999px;
+  width: min(720px, calc(100% - 2 * var(--s3)));
+}
+.doc-bar .wordmark { margin-right: auto; }
+.wordmark { display: inline-flex; align-items: center; gap: 7px; color: var(--paper); text-decoration: none; font: 700 1.3rem/1 var(--font-display); letter-spacing: -0.035em; }
+.wordmark .mark { width: 26px; height: 26px; color: var(--accent); }
+.site-foot { display: flex; flex-wrap: wrap; gap: 0 var(--s5); justify-content: center; padding: var(--s6) var(--s4) calc(var(--s6) + env(safe-area-inset-bottom)); font-size: var(--t-sm); color: var(--paper-3); }
+.site-foot a { color: var(--paper-2); text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; }
+.site-foot span { display: inline-flex; align-items: center; min-height: 44px; }
+.site-foot a:hover { color: var(--paper); text-decoration: underline; }
+
+/* Cross-page transitions: pages share the bar, so it stays put while the content cross-fades. */
+@view-transition { navigation: auto; }
+.doc-bar, .topbar { view-transition-name: bar; }
+::view-transition-old(root) { animation: 0.22s var(--ease-io) both vt-out; }
+::view-transition-new(root) { animation: 0.42s var(--ease-out) both vt-in; }
+@keyframes vt-out { to { opacity: 0; filter: blur(6px); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(10px); filter: blur(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

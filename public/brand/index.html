@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brand style sheet · Taglet</title>
+<meta name="description" content="Taglet's colour palette, typefaces, icon, glass and motion rules: the style sheet behind the app.">
+<link rel="canonical" href="https://taglet.net/brand/">
+<meta name="theme-color" content="#0b0a09">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:title" content="Taglet brand style sheet">
+<meta property="og:url" content="https://taglet.net/brand/">
+<meta property="og:image" content="https://taglet.net/og.png">
+<link rel="stylesheet" href="/css/base.css">
+<style>
+  .doc { max-width: 880px; }
+  .intro { display: grid; grid-template-columns: 148px 1fr; gap: var(--s6); align-items: center; }
+  .intro img { width: 148px; height: 148px; border-radius: 33px; box-shadow: 0 24px 48px -16px rgba(0,0,0,.7); }
+  .chips { display: grid; margin-top: var(--s4); border-radius: 14px; overflow: hidden; }
+  .chip { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: var(--s3); min-height: 74px; padding: var(--s3) var(--s4); }
+  .chip b { font: 600 var(--t-md)/1.2 var(--font-display); }
+  .chip span { display: block; font-size: var(--t-xs); max-width: 46ch; }
+  .chip code { font: 500 var(--t-sm) var(--font-mono); }
+  .tints { display: flex; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
+  .tints div { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-sm); color: var(--paper-2); }
+  .tints i { width: 22px; height: 22px; border-radius: 50%; }
+  .face { padding: var(--s5) 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 200px 1fr; gap: var(--s5); }
+  .face:first-of-type { border-top: 0; }
+  .face p.meta { font-size: var(--t-sm); }
+  .face .sample { color: var(--paper); line-height: 1.15; }
+  .rules { list-style: none; padding: 0 !important; }
+  .rules li { padding-left: 22px; position: relative; }
+  .rules li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); rotate: 45deg; }
+  .demo-glass { position: relative; margin-top: var(--s4); height: 200px; border-radius: 18px; overflow: hidden; background: conic-gradient(from 200deg at 30% 60%, #3b2a1a, #6d4a2a, #1f2a33, #3b2a1a); }
+  .demo-glass .glass { position: absolute; left: 50%; bottom: 20px; translate: -50% 0; padding: 10px 22px; border-radius: 999px; font-weight: 600; font-size: var(--t-sm); white-space: nowrap; }
+  @media (max-width: 640px) { .intro, .face { grid-template-columns: 1fr; } .intro img { width: 112px; height: 112px; border-radius: 25px; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="doc-bar glass">
+  <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#i-mark"/></svg><span>taglet</span></a>
+  <a class="btn primary small" href="/">Open Taglet</a>
+</header>
+<main class="doc" id="main">
+  <div class="intro">
+    <img src="/icon-512.png" alt="Taglet app icon: a manila paper tag on a string, against warm black." width="148" height="148">
+    <div>
+      <h1>Brand style sheet</h1>
+      <p class="lede">A taglet is a small tag. The brand is a paper tag hanging in a dark room: warm, handled, a little playful, and honest about what it does.</p>
+    </div>
+  </div>
+
+  <h2>Colour</h2>
+  <p>Warm near-blacks keep the room dark so album art and one accent carry the colour. The accent is the colour of a manila tag. A second colour, Signal, appears only when something needs fixing.</p>
+  <div class="chips">
+    <div class="chip" style="background:#0b0a09;color:#f3ece2"><div><b>Ink 0</b><span>Page background. Warm, not blue-black.</span></div><code>#0B0A09</code></div>
+    <div class="chip" style="background:#141210;color:#f3ece2"><div><b>Ink 1</b><span>Panels and the welcome tag’s room.</span></div><code>#141210</code></div>
+    <div class="chip" style="background:#27231f;color:#f3ece2"><div><b>Ink 3</b><span>Placeholders, tracks, quiet fills.</span></div><code>#27231F</code></div>
+    <div class="chip" style="background:#f3ece2;color:#1b1408"><div><b>Paper</b><span>Primary text. 16.9:1 on Ink 0.</span></div><code>#F3ECE2</code></div>
+    <div class="chip" style="background:#bdb4a7;color:#1b1408"><div><b>Paper 2</b><span>Secondary text. 9.7:1 on Ink 0.</span></div><code>#BDB4A7</code></div>
+    <div class="chip" style="background:#8e867b;color:#0b0a09"><div><b>Paper 3</b><span>Hints and metadata. 5.5:1 on Ink 0.</span></div><code>#8E867B</code></div>
+    <div class="chip" style="background:#ecca8e;color:#1b1408"><div><b>Manila</b><span>The accent: primary buttons, selection, focus rings, the Ready tag.</span></div><code>#ECCA8E</code></div>
+    <div class="chip" style="background:#ff7558;color:#2a0a03"><div><b>Signal</b><span>Problems and destructive actions only. Never decoration.</span></div><code>#FF7558</code></div>
+  </div>
+  <h3>Tints</h3>
+  <p>Like Evertag, people can choose their accent. Every tint keeps 4.5:1 contrast against its own button text.</p>
+  <div class="tints">
+    <div><i style="background:#ecca8e"></i>Manila #ECCA8E</div>
+    <div><i style="background:#ff9b7a"></i>Coral #FF9B7A</div>
+    <div><i style="background:#8fd0ec"></i>Pool #8FD0EC</div>
+    <div><i style="background:#e2b0ee"></i>Orchid #E2B0EE</div>
+  </div>
+
+  <h2>Type</h2>
+  <p>Three faces, each with one job. All are open-source and self-hosted, so nothing loads from a font service.</p>
+  <div class="face">
+    <p class="meta"><strong>Bricolage Grotesque</strong><br>Display: headings, album titles, the wordmark. Variable, 600–700.</p>
+    <p class="sample" style="font:700 2.6rem/1.05 var(--font-display);letter-spacing:-.035em">Albums that stay together.</p>
+  </div>
+  <div class="face">
+    <p class="meta"><strong>Hanken Grotesk</strong><br>Interface and reading text. 400 for body, 600 for labels and buttons. Tabular figures where numbers line up.</p>
+    <p class="sample" style="font:400 1.15rem/1.5 var(--font-text)">Taglet turns your files into MP3s that Spotify’s Local Files reads properly, with every artist and the right cover.</p>
+  </div>
+  <div class="face">
+    <p class="meta"><strong>JetBrains Mono</strong><br>Only for data: track numbers, durations, file names, pairing codes.</p>
+    <p class="sample" style="font:500 1.2rem/1.4 var(--font-mono)">07 · 3:41 · K7QMX-9PD4R</p>
+  </div>
+
+  <h2>Icon and mark</h2>
+  <p>A manila tag on a string, tipped 14 degrees as if it just swung. The eyelet is where the string goes in. Three lines on the tag stand for title, artists and album, the first one bold. The small mark in the bar is the same tag, simplified so it reads at 16 px.</p>
+
+  <h2>Liquid Glass</h2>
+  <p>Glass belongs to the control layer that floats above content: the top bar, the phone dock, menus and sheets. Content (track lists, fields, art) is never glass. The glass has something to bend because the current album’s art is blurred into the room behind it, so the bars take on the album’s colours.</p>
+  <div class="demo-glass" aria-hidden="true"><div class="glass">Control layer only</div></div>
+
+  <h2>Motion</h2>
+  <ul class="rules">
+    <li>One idea: the tag on a string. It leans toward the pointer, swings when files arrive, and knocks once when an album becomes ready.</li>
+    <li>Screens slide by direction (deeper goes right, back goes left) with the View Transitions API. The album cover morphs from the list into the album.</li>
+    <li>Ease-out curves and springs that settle. No bounce for its own sake.</li>
+    <li>Everything respects Reduce Motion.</li>
+  </ul>
+
+  <h2>Voice</h2>
+  <ul class="rules">
+    <li>Plain words, sentence case, second person. Say what will happen: “Number in this order”, not “Fix”.</li>
+    <li>Errors name the problem and the way out.</li>
+    <li>Be specific about privacy. Say what stays on the device and what doesn’t.</li>
+    <li>Don’t use Spotify’s name or marks as branding. Taglet works with Spotify; it isn’t part of it.</li>
+  </ul>
+</main>
+<footer class="site-foot">
+  <a href="/">Taglet</a><a href="/spotify/">Adding files to Spotify</a><a href="/privacy/">Privacy</a><span>Made by Stevie McLane</span>
+</footer>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="i-mark" viewBox="0 0 32 32"><path d="M12.2 3.5h7.6c1.2 0 2.2 1 2.2 2.2v4l4.4 5.4c.4.5.6 1.1.6 1.7v9.5c0 1.6-1.3 2.9-2.9 2.9H7.9C6.3 29.2 5 27.9 5 26.3v-9.5c0-.6.2-1.2.6-1.7L10 9.7v-4c0-1.2 1-2.2 2.2-2.2Z" fill="currentColor" transform="rotate(-14 16 16)"/><circle cx="16" cy="13" r="2.3" fill="#0b0a09" transform="rotate(-14 16 16)"/></symbol></defs></svg>
+<script src="/js/doc.js"></script>
+</body>
+</html>

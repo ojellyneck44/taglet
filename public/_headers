@@ -1,0 +1,22 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' blob: wss://taglet.net wss://www.taglet.net; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# no-transform stops Cloudflare injecting its analytics beacon into pages (Taglet promises no analytics).
+# Pages only: on the engine files it would also switch off Brotli.
+/
+  Cache-Control: no-transform
+/spotify/
+  Cache-Control: no-transform
+/privacy/
+  Cache-Control: no-transform
+/brand/
+  Cache-Control: no-transform
