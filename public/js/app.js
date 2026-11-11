@@ -483,8 +483,10 @@ function renderCheck(a) {
   const tag = $("#checkTag");
   const ready = !issues.length;
   maskText($("#checkText"), ready ? "Ready for Spotify" : `${issues.length} to fix for Spotify`);
+  // Only missing essentials get a tag; a ready album shows none (the text stays for screen readers).
   tag.classList.toggle("warn", !ready);
-  if (lastReady !== null && lastReady !== ready) { swing(tag, ready ? 14 : 8); if (ready) buzz(10); }
+  tag.classList.toggle("ready", ready);
+  if (lastReady !== null && lastReady !== ready) { if (ready) buzz(10); else swing(tag, 8); }
   lastReady = ready;
   save();
   $("#issues").innerHTML = [

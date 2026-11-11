@@ -134,6 +134,8 @@ body.dragging:not([data-view="welcome"]) .dropveil { opacity: 1; }
 }
 .check-tag .eyelet { position: absolute; left: 11px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--ink-0); }
 .check-tag.warn { background: var(--signal); color: #2a0a03; }
+.check-tag { transition: opacity var(--dur-base) var(--ease-out), scale var(--dur-base) var(--ease-out); }
+.check-tag.ready { opacity: 0; scale: 0.85; pointer-events: none; transition-duration: var(--dur-exit); transition-timing-function: ease-in; }
 
 .album-title {
   width: 100%; border: 0; background: none; padding: 2px 0; font: 700 var(--t-2xl)/1.1 var(--font-display); letter-spacing: -0.03em;
