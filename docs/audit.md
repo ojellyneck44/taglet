@@ -53,7 +53,7 @@ FIX: untagged files from one drop now form one album. A lone untagged song becom
 
 ## Checked and fine
 
-- Text contrast is 4.5:1 or better on every measured node (16–66 per page). The focus ring is 2px Manila, 12.6:1 against Ink 0, and shows only on `:focus-visible`.
+- Text contrast is 4.5:1 or better on every measured node (16–66 per page). The focus ring is 2px Patina, 9.0:1 against Ink 0, and shows only on `:focus-visible`.
 - One h1 per page, no skipped heading levels, a skip link on every page, and landmarks in place.
 - Sentence case throughout. "Open Taglet" and "Liquid Glass" are proper nouns.
 - SEO: unique titles and descriptions, canonicals that match their own URLs, Open Graph image, `WebApplication` JSON-LD, robots.txt pointing at the sitemap. The sitemap lists 4 URLs, all 200 with no redirects, no noindex and HTTPS only. The 404 page is `noindex`.

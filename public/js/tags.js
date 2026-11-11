@@ -176,3 +176,12 @@ export function zipParts(files) {
 export function safeName(s) {
   return String(s || "Untitled").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/\s+/g, " ").trim().slice(0, 120) || "Untitled";
 }
+
+/** Strip what changes between renders ("v3", "final", "master", dates, separators) so builds of one song match. */
+export const buildKey = (s) => String(s || "").toLowerCase()
+  .replace(/\.[a-z0-9]{2,5}$/, "")
+  .replace(/[_.]+|\s-\s|-(?=\d)/g, " ")
+  .replace(/\b\d{4}[ -]?\d{2}[ -]?\d{2}\b|\b\d{6,8}\b/g, " ")
+  .replace(/\b(v|ver|version|take|mix|mixdown|bounce|render|master|mastered|final|draft|wip|rough|demo|edit|new)\s*\d*\b/g, " ")
+  .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+

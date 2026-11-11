@@ -24,9 +24,6 @@
   .chip b { font: 600 var(--t-md)/1.2 var(--font-display); }
   .chip span { display: block; font-size: var(--t-xs); max-width: 46ch; }
   .chip code { font: 500 var(--t-sm) var(--font-mono); }
-  .tints { display: flex; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
-  .tints div { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-sm); color: var(--paper-2); }
-  .tints i { width: 22px; height: 22px; border-radius: 50%; }
   .face { padding: var(--s5) 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 200px 1fr; gap: var(--s5); }
   .face:first-of-type { border-top: 0; }
   .face p.meta { font-size: var(--t-sm); }
@@ -47,15 +44,15 @@
 </header>
 <main class="doc" id="main">
   <div class="intro">
-    <img src="/icon-512.png" alt="Taglet app icon: a manila paper tag on a string, against warm black." width="148" height="148">
+    <img src="/icon-512.png" alt="Taglet app icon: a patina-green tag on a string, against warm black." width="148" height="148">
     <div>
       <h1>Brand style sheet</h1>
-      <p class="lede">A taglet is a small tag. The brand is a paper tag hanging in a dark room: warm, handled, a little playful, and honest about what it does.</p>
+      <p class="lede">A taglet is a small tag. The brand is a tag hanging in a dark room, coloured like aged copper: warm, handled, a little playful, and honest about what it does.</p>
     </div>
   </div>
 
   <h2>Colour</h2>
-  <p>Warm near-blacks keep the room dark so album art and one accent carry the colour. The accent is the colour of a manila tag. A second colour, Signal, appears only when something needs fixing.</p>
+  <p>Warm near-blacks keep the room dark so album art and one accent carry the colour. The accent is Patina, the blue-green that copper turns with age: classic, calm, and nothing like a streaming service’s brand. A second colour, Signal, appears only when something needs fixing.</p>
   <div class="chips">
     <div class="chip" style="background:#0b0a09;color:#f3ece2"><div><b>Ink 0</b><span>Page background. Warm, not blue-black.</span></div><code>#0B0A09</code></div>
     <div class="chip" style="background:#141210;color:#f3ece2"><div><b>Ink 1</b><span>Panels and the welcome tag’s room.</span></div><code>#141210</code></div>
@@ -63,13 +60,9 @@
     <div class="chip" style="background:#f3ece2;color:#1b1408"><div><b>Paper</b><span>Primary text. 16.9:1 on Ink 0.</span></div><code>#F3ECE2</code></div>
     <div class="chip" style="background:#bdb4a7;color:#1b1408"><div><b>Paper 2</b><span>Secondary text. 9.7:1 on Ink 0.</span></div><code>#BDB4A7</code></div>
     <div class="chip" style="background:#8e867b;color:#0b0a09"><div><b>Paper 3</b><span>Hints and metadata. 5.5:1 on Ink 0.</span></div><code>#8E867B</code></div>
-    <div class="chip" style="background:#ecca8e;color:#1b1408"><div><b>Manila</b><span>The accent: primary buttons, selection, focus rings, the Ready tag.</span></div><code>#ECCA8E</code></div>
+    <div class="chip" style="background:#46c2b0;color:#04201b"><div><b>Patina</b><span>The accent: primary buttons, selection, focus rings, the Ready tag. 9.0:1 on Ink 0, 7.8:1 with its own ink.</span></div><code>#46C2B0</code></div>
     <div class="chip" style="background:#ff7558;color:#2a0a03"><div><b>Signal</b><span>Problems and destructive actions only. Never decoration.</span></div><code>#FF7558</code></div>
   </div>
-  <h3>Tints</h3>
-  <p>Like Evertag, people can choose their accent. Every tint keeps 4.5:1 contrast against its own button text.</p>
-  <div class="tints">
-    <div><i style="background:#ecca8e"></i>Manila #ECCA8E</div>
     <div><i style="background:#ff9b7a"></i>Coral #FF9B7A</div>
     <div><i style="background:#8fd0ec"></i>Pool #8FD0EC</div>
     <div><i style="background:#e2b0ee"></i>Orchid #E2B0EE</div>
@@ -91,7 +84,7 @@
   </div>
 
   <h2>Icon and mark</h2>
-  <p>A manila tag on a string, tipped 14 degrees as if it just swung. The eyelet is where the string goes in. Three lines on the tag stand for title, artists and album, the first one bold. The small mark in the bar is the same tag, simplified so it reads at 16 px.</p>
+  <p>A patina tag on a string, tipped 14 degrees as if it just swung. The eyelet is where the string goes in. Three lines on the tag stand for title, artists and album, the first one bold. The small mark in the bar is the same tag, simplified so it reads at 16 px.</p>
 
   <h2>Liquid Glass</h2>
   <p>Glass belongs to the control layer that floats above content: the top bar, the phone dock, menus and sheets. Content (track lists, fields, art) is never glass. The glass has something to bend because the current album’s art is blurred into the room behind it, so the bars take on the album’s colours.</p>

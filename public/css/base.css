@@ -16,10 +16,10 @@
   --paper: #f3ece2;
   --paper-2: #bdb4a7;
   --paper-3: #8e867b;
-  /* Accent (themeable, like Evertag). Manila is the default: the colour of a paper tag. */
-  --accent: #ecca8e;
-  --accent-ink: #1b1408;
-  --accent-soft: rgba(236, 202, 142, 0.14);
+  /* Accent: Patina, the blue-green of aged copper. One accent, used for actions, selection, focus and "Ready". */
+  --accent: #46c2b0;
+  --accent-ink: #04201b;
+  --accent-soft: rgba(70, 194, 176, 0.14);
   --signal: #ff7558;          /* problems and destructive actions only */
   --signal-soft: rgba(255, 117, 88, 0.14);
 
@@ -35,9 +35,6 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
 }
-[data-tint="coral"]  { --accent: #ff9b7a; --accent-ink: #2a0f06; --accent-soft: rgba(255, 155, 122, 0.14); }
-[data-tint="pool"]   { --accent: #8fd0ec; --accent-ink: #06202b; --accent-soft: rgba(143, 208, 236, 0.14); }
-[data-tint="orchid"] { --accent: #e2b0ee; --accent-ink: #24102b; --accent-soft: rgba(226, 176, 238, 0.14); }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background: var(--ink-0); }
@@ -45,7 +42,22 @@ body {
   margin: 0; min-height: 100dvh; background: var(--ink-0); color: var(--paper);
   font: 400 var(--t-md)/1.5 var(--font-text); font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
 }
+button, .btn, a { touch-action: manipulation; }
+
+/* Installed app (Home Screen): behave like an app, the way Any Day Now does. No pull-to-refresh or rubber band,
+   no double-tap zoom (pinch is switched off in the viewport by js), and text is only selectable where people
+   type or copy: fields, the pairing code and file names. The website in a browser keeps zoom and selection. */
+:root[data-native] { overscroll-behavior-y: none; touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+:root[data-native] body { overscroll-behavior-y: none; }
+:root[data-native] :is(input, textarea, [contenteditable], .code, .mono, .doc p, .doc li) { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+
+/* Launch splash, installed app only: the icon on Ink 0, fading into the first screen. */
+#splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: var(--ink-0); transition: opacity .3s ease, visibility 0s linear .3s; }
+#splash img { width: 84px; height: 84px; border-radius: 19px; }
+#splash.done { opacity: 0; visibility: hidden; }
+@media not all and (display-mode: standalone) { #splash { display: none; } }
 h1, h2, h3 { font-family: var(--font-display); font-weight: 650; line-height: 1.08; letter-spacing: -0.022em; margin: 0; text-wrap: balance; }
 p { margin: 0; text-wrap: pretty; }
 a { color: var(--accent); text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
@@ -137,3 +149,4 @@ input, textarea { caret-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+:root[data-native] .site-foot { display: none; }

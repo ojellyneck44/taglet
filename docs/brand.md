@@ -4,7 +4,7 @@ The live version, with swatches and type specimens, is at [taglet.net/brand](htt
 
 ## Idea
 
-A taglet is a small tag. The brand is a manila paper tag hanging on a string in a dark room: warm, handled, a little playful, and plain-spoken about what it does with your files.
+A taglet is a small tag. The brand is a patina-green tag hanging on a string in a dark room: warm, handled, a little playful, and plain-spoken about what it does with your files.
 
 ## Colour
 
@@ -17,14 +17,12 @@ A taglet is a small tag. The brand is a manila paper tag hanging on a string in 
 | Paper | `#F3ECE2` | Primary text | 16.9:1 |
 | Paper 2 | `#BDB4A7` | Secondary text | 9.7:1 |
 | Paper 3 | `#8E867B` | Hints, metadata | 5.5:1 |
-| Manila (accent) | `#ECCA8E` | Primary actions, selection, focus, "Ready" | 12.6:1 |
+| Patina (accent) | `#46C2B0` | Primary actions, selection, focus, "Ready" | 9.0:1 |
 | Signal | `#FF7558` | Problems and destructive actions only | 7.5:1 |
 
-Text on the accent uses its own dark ink (Manila `#1B1408`). Every tint passes 4.5:1 with its ink.
+Text on the accent uses its own dark ink, `#04201B` (7.8:1). The accent is fixed: one colour, so the brand reads the same everywhere.
 
-**Tints** (user-selectable, like Evertag's theming): Manila `#ECCA8E` (default), Coral `#FF9B7A`, Pool `#8FD0EC`, Orchid `#E2B0EE`.
-
-Why these colours: dark suits the use scene (sorting music late, on a laptop or in bed on a phone), and it lets album art be the brightest thing on screen. The usual "AI app" accents (indigo-violet gradients, neon on black, emerald) were ruled out. Manila ties the colour to the name.
+Why these colours: dark suits the use scene (sorting music late, on a laptop or in bed on a phone), and it lets album art be the brightest thing on screen. The usual "AI app" accents (indigo-violet gradients, neon on black, emerald) were ruled out. Patina was picked over a first-draft manila gold: a classic, calm blue-green that stays clear of Spotify's green.
 
 ## Type
 
@@ -40,7 +38,7 @@ Scale (1.25 ratio, 16px body): 12.5 / 14 / 16 / 20 / 25.6 / 34.4 / clamp(38–66
 
 ## Icon
 
-A manila tag on a string, tipped −14° as if it just swung. The string runs into the eyelet. Three lines on the tag stand for title, artists and album, the first one bold. The background is a warm radial from `#2A2520` to Ink 0. Files: `public/icon.svg` (source), PNGs at 180/192/512, maskable 512 with an 80% safe zone, and `favicon.ico`.
+A patina tag on a string, tipped −14° as if it just swung. The string runs into the eyelet. Three lines on the tag stand for title, artists and album, the first one bold. The tag runs from `#74D8C9` to `#3CB4A3`; the background is a warm radial from `#2A2520` to Ink 0. Files: `public/icon.svg` (source), PNGs at 180/192/512, maskable 512 with an 80% safe zone, and `favicon.ico`.
 
 The small mark (top bar, favicon) is the same tag simplified to a silhouette with an eyelet, so it holds up at 16px.
 

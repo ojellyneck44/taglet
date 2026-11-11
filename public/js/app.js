@@ -1,5 +1,5 @@
 import { loadEngine, probe, render } from "./engine.js";
-import { joinArtists, safeName, zipParts } from "./tags.js";
+import { buildKey, joinArtists, safeName, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -11,6 +11,58 @@ const fmtTime = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const icon = (id) => `<svg aria-hidden="true"><use href="#i-${id}"/></svg>`;
+
+// Installed from the Home Screen, Taglet behaves like an app (same rules as Any Day Now): no pinch or
+// double-tap zoom, no pull-to-refresh, and text selection only in fields (base.css, :root[data-native]).
+// In a plain browser the page keeps zoom for accessibility.
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+if (standalone) {
+  document.documentElement.setAttribute("data-native", "");
+  $('meta[name="viewport"]').setAttribute("content", "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover");
+}
+addEventListener("load", () => setTimeout(() => $("#splash").classList.add("done"), 250));
+/** A light tap of feedback on Android; iOS has no vibration API for the web, so it's silent there. */
+const buzz = (ms = 8) => { try { navigator.vibrate?.(ms); } catch {} };
+
+// Sheets: centred on desktop; on phones they sit at the bottom with a grab handle, and dragging the handle or
+// header down closes them (past a quarter of the height, or a quick flick). Ported from Any Day Now's dom.js.
+function openSheet(dlg) {
+  if (dlg.open) return;
+  const inner = $(".sheet-inner", dlg);
+  if (!$(".sheet-handle", dlg)) inner.prepend(Object.assign(document.createElement("div"), { className: "sheet-handle" }));
+  inner.scrollTop = 0;
+  dlg.showModal();
+  if (dlg.dataset.drag) return;
+  dlg.dataset.drag = "1";
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close("cancel"); });
+  let start = null;
+  dlg.addEventListener("pointerdown", (e) => {
+    if (wide.matches || !e.target.closest(".sheet-handle, .sheet-head") || e.target.closest("button, a, input, select, textarea")) return;
+    start = { y: e.clientY, t: performance.now(), id: e.pointerId, dy: 0 };
+    try { dlg.setPointerCapture(e.pointerId); } catch {}
+    dlg.classList.add("is-dragging");
+  });
+  dlg.addEventListener("pointermove", (e) => {
+    if (!start || e.pointerId !== start.id) return;
+    start.dy = Math.max(0, e.clientY - start.y);
+    dlg.style.transform = `translateY(${start.dy}px)`;
+  });
+  const end = (e) => {
+    if (!start || e.pointerId !== start.id) return;
+    const { dy, t } = start, speed = dy / Math.max(1, performance.now() - t);
+    start = null;
+    dlg.classList.remove("is-dragging");
+    const settle = (to, ms, then) => {
+      dlg.style.transition = `transform ${ms}ms var(--ease-out)`;
+      dlg.style.transform = to;
+      setTimeout(() => { dlg.style.transition = ""; dlg.style.transform = ""; then?.(); }, ms);
+    };
+    if (dy > dlg.offsetHeight / 4 || (dy > 24 && speed > 0.6)) settle(`translateY(${dlg.offsetHeight}px)`, 200, () => dlg.close("cancel"));
+    else settle("", 320);
+  };
+  dlg.addEventListener("pointerup", end);
+  dlg.addEventListener("pointercancel", end);
+}
 
 /** Album-level fields live once on the album, so every track in it is written with identical values. */
 const albums = new Map(); // id -> { id, title, albumArtist, year, genre, compilation, art: {blob,bytes,url}|null, trackIds: [] }
@@ -45,7 +97,8 @@ const showAlbum = (id, dir = 1) => { selectAlbum(id); setView("album", dir); };
 
 // ---------------------------------------------------------------- import
 
-async function addFiles(list, source = "") {
+/** opts.target: a track id whose audio the (single) file should replace, from the "New build" button. */
+async function addFiles(list, source = "", opts = {}) {
   const files = [...list];
   const images = files.filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|heic|avif)$/i.test(f.name));
   const audio = files.filter((f) => !images.includes(f));
@@ -68,6 +121,7 @@ async function addFiles(list, source = "") {
   }
   const touched = new Set();
   const batch = { loose: null }; // untagged files dropped together become one album
+  const builds = [], addedNow = new Set();
   let n = 0;
   audio.sort((a, b) => collator.compare(a.name, b.name));
   for (const file of audio) {
@@ -75,8 +129,11 @@ async function addFiles(list, source = "") {
     engine.innerHTML = `<span>Reading ${n} of ${audio.length}: ${esc(file.name)}</span><progress max="${audio.length}" value="${n - 1}"></progress>`;
     try {
       const info = await probe(file);
-      const t = { id: uid(), file, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
-      tracks.set(t.id, t);
+      // An updated render of a song that's already tagged: hold it back and ask before replacing anything.
+      const target = opts.target ? tracks.get(opts.target) : findBuild(file, info, addedNow);
+      if (target) { builds.push({ file, info, target: target.id }); continue; }
+      const t = newTrack(file, info);
+      addedNow.add(t.id);
       const album = placeTrack(t, info, batch);
       touched.add(album.id);
       if (!current.album) current.album = album.id;
@@ -87,6 +144,17 @@ async function addFiles(list, source = "") {
     }
   }
   engine.hidden = true;
+  let replaced = [];
+  if (builds.length) {
+    const picks = await askBuilds(builds);
+    for (const b of builds) {
+      if (picks === "new") { const t = newTrack(b.file, b.info); addedNow.add(t.id); touched.add(placeTrack(t, b.info, batch).id); continue; }
+      if (!(picks instanceof Map) || !picks.has(b)) continue; // closed, or left unticked: nothing changes
+      const t = tracks.get(picks.get(b));
+      replaced.push([t, replaceAudio(t, b.file, b.info)]);
+      touched.add(t.albumId);
+    }
+  }
   // A lone untagged song is a single: name the album after it.
   if (batch.loose?.trackIds.length === 1 && !batch.loose.title) batch.loose.title = tracks.get(batch.loose.trackIds[0]).tags.title;
   for (const id of touched) tidyAlbum(albums.get(id));
@@ -94,9 +162,71 @@ async function addFiles(list, source = "") {
   if (wide.matches && !current.track && current.album) current.track = albums.get(current.album).trackIds[0] || null;
   renderAll();
   if (!wide.matches && albums.size === 1 && document.body.dataset.view === "shelf") setView("album"); // skip a one-item list
-  if (touched.size) toast(`${n === 1 ? "1 song" : `${n} songs`} added${source}${touched.size > 1 ? ` into ${touched.size} albums` : ""}.`);
+  const added = addedNow.size;
+  if (replaced.length) {
+    buzz(12);
+    toast(`New ${replaced.length === 1 ? "build" : "builds"} swapped in for ${replaced.length === 1 ? `“${replaced[0][0].tags.title}”` : `${replaced.length} songs`}. Tags, cover and order stay the same.`, "", {
+      label: "Undo",
+      run: () => { for (const [t, prev] of replaced) Object.assign(t, prev); renderAll(); },
+    });
+  } else if (added || touched.size) { buzz(); toast(`${added === 1 ? "1 song" : `${added} songs`} added${source}${touched.size > 1 ? ` into ${touched.size} albums` : ""}.`); }
 }
 let retryFiles = null;
+
+function newTrack(file, info) {
+  const t = { id: uid(), file, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
+  tracks.set(t.id, t);
+  return t;
+}
+
+function findBuild(file, info, skip) {
+  const keys = new Set([buildKey(file.name), buildKey(info.tags.title)].filter(Boolean));
+  for (const t of tracks.values()) {
+    if (skip.has(t.id)) continue;
+    if (keys.has(buildKey(t.file.name)) || keys.has(buildKey(t.tags.title))) return t;
+  }
+  return null;
+}
+
+/** Swap in new audio, keep every tag, the cover and the album position. Returns what's needed to undo. */
+function replaceAudio(t, file, info) {
+  const prev = { file: t.file, codec: t.codec, sampleRate: t.sampleRate, duration: t.duration, build: t.build };
+  Object.assign(t, { file, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, build: (t.build || 1) + 1 });
+  const a = albums.get(t.albumId);
+  if (!a.art && info.art) setArt(a, info.art);
+  const p = $("#player");
+  if (p.dataset.track === t.id) { p.pause(); p.removeAttribute("src"); p.dataset.track = ""; }
+  return prev;
+}
+
+/** Resolves to a Map(build -> track id to replace), "new" (import them as new songs) or null (skip them). */
+function askBuilds(builds) {
+  return new Promise((resolve) => {
+    const d = $("#buildsDialog"), ol = $("#buildsList");
+    const choices = [...albums.values()].flatMap((a) => a.trackIds.map((id) => [id, `${tracks.get(id).tags.title || "Untitled"} · ${a.title || "Untitled album"}`]));
+    ol.innerHTML = builds.map((b, i) => `<li>
+      <input type="checkbox" checked id="bc${i}"><label class="file" for="bc${i}">${esc(b.file.name)}</label>
+      <span class="meta">${esc((b.file.name.match(/\.(\w+)$/)?.[1] || b.info.codec).toUpperCase())} · ${fmtTime(b.info.duration)} · replaces the audio of</span>
+      <label class="field"><span class="sr-only">Song to replace with ${esc(b.file.name)}</span>
+        <select data-i="${i}">${choices.map(([id, label]) => `<option value="${id}" ${id === b.target ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+    </li>`).join("");
+    $("#buildsGo").textContent = builds.length === 1 ? "Replace audio" : `Replace ${builds.length} songs`;
+    let result = null;
+    const onClick = (e) => {
+      const b = e.target.closest("[data-builds]");
+      if (!b) return;
+      if (b.dataset.builds === "new") result = "new";
+      else {
+        result = new Map();
+        builds.forEach((x, i) => { if ($(`#bc${i}`).checked) result.set(x, $(`select[data-i="${i}"]`, ol).value); });
+      }
+      d.close();
+    };
+    d.addEventListener("click", onClick);
+    d.addEventListener("close", () => { d.removeEventListener("click", onClick); resolve(result); }, { once: true });
+    openSheet(d);
+  });
+}
 
 function placeTrack(t, info, batch) {
   const title = info.tags.album.trim();
@@ -195,7 +325,7 @@ function renderTracks(a) {
     return `<li class="track" data-track-id="${id}" aria-current="${id === current.track}">
       <button class="grip" type="button" aria-label="Move ${esc(t.tags.title)}. Use arrow keys.">${icon("grip")}</button>
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
-      <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
+      <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}${t.build ? `<span class="build-tag">build ${t.build}</span>` : ""}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
       <span class="dur">${fmtTime(t.duration)}</span>
     </li>`;
   }).join("");
@@ -208,7 +338,7 @@ function renderCheck(a) {
   const ready = !issues.length;
   $("#checkText").textContent = ready ? "Ready for Spotify" : `${issues.length} to fix for Spotify`;
   tag.classList.toggle("warn", !ready);
-  if (lastReady !== null && lastReady !== ready) swing(tag, ready ? 14 : 8);
+  if (lastReady !== null && lastReady !== ready) { swing(tag, ready ? 14 : 8); if (ready) buzz(10); }
   lastReady = ready;
   $("#issues").innerHTML = [
     ...issues.map((i) => `<li>${icon("alert")}<span>${esc(i.text)}</span>${i.fix ? `<button class="btn ghost small" type="button" data-fix="${i.act}">${i.fix}</button>` : ""}</li>`),
@@ -223,7 +353,7 @@ function renderInspector() {
   for (const input of $$("[data-track]")) {
     if (document.activeElement !== input) input.value = t.tags[input.dataset.track] || "";
   }
-  $("#inspFile").textContent = `${t.file.name}`;
+  $("#inspFile").textContent = `${t.file.name}${t.build ? ` · build ${t.build}` : ""}`;
   $("#inspFile").title = `${t.codec.toUpperCase()} · ${(t.sampleRate / 1000).toFixed(1)} kHz`;
   renderArtists(t);
   const sel = $("#moveAlbum");
@@ -360,8 +490,10 @@ const actions = {
     try { await p.play(); } catch { toast(`This browser can’t play ${t.codec.toUpperCase()} files directly. It still converts fine.`); }
   },
   pickArt: () => $("#pickImage").click(),
+  replaceAudio: () => $("#pickBuild").click(),
+  install: async () => { const e = installEvent; installEvent = null; showInstallHint(); if (e) { e.prompt(); const r = await e.userChoice.catch(() => null); if (r?.outcome === "accepted") buzz(); } $("#installSheet")?.close(); },
   removeArt: () => { const a = cropTarget; if (a) { a.art = null; renderAll(); } $("#cropDialog").close(); },
-  tint: (btn) => { const m = $("#tintMenu"); m.hidden = !m.hidden; btn.setAttribute("aria-expanded", String(!m.hidden)); if (!m.hidden) $("[aria-checked=true]", m).focus(); },
+  tint: (btn) => { const m = $("#tintMenu"); m.hidden = !m.hidden; btn.setAttribute("aria-expanded", String(!m.hidden)); if (!m.hidden) $("a", m).focus(); },
   copyLink: async () => { try { await navigator.clipboard.writeText(linkURL()); toast("Link copied."); } catch { toast("Couldn’t copy. Type the code instead.", "err"); } },
   sendPick: () => $("#pickSend").click(),
   sendExports: () => sendFiles(lastExports.map((x) => new File([x.bytes], x.name.split("/").pop(), { type: "audio/mpeg" }))),
@@ -373,8 +505,6 @@ const actions = {
 document.addEventListener("click", (e) => {
   const act = e.target.closest("[data-act]");
   if (act && actions[act.dataset.act]) { actions[act.dataset.act](act); return; }
-  const tint = e.target.closest("[data-tint]:not(html)");
-  if (tint) { setTint(tint.dataset.tint); return; }
   const fix = e.target.closest("[data-fix]");
   if (fix) {
     const a = albums.get(current.album);
@@ -411,6 +541,7 @@ $("#pickImage").addEventListener("change", (e) => {
   const a = cropTarget && $("#cropDialog").open ? cropTarget : albums.get(current.album);
   if (a) openCrop(f, a);
 });
+$("#pickBuild").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f && current.track) addFiles([f], "", { target: current.track }); });
 $("#pickSend").addEventListener("change", (e) => { sendFiles([...e.target.files]); e.target.value = ""; });
 
 const player = $("#player");
@@ -524,7 +655,7 @@ async function openCrop(file, album) {
   el.hidden = false;
   const box = $("#cropper");
   const d = $("#cropDialog");
-  if (!d.open) d.showModal();
+  openSheet(d);
   const V = box.clientWidth;
   const nw = img.naturalWidth, nh = img.naturalHeight;
   const base = V / Math.min(nw, nh);
@@ -608,7 +739,7 @@ function openExport() {
   $("#scopeAll").textContent = `Everything (${tracks.size} in ${albums.size} ${albums.size === 1 ? "album" : "albums"})`;
   $("#exportSetup").hidden = false; $("#exportActions").hidden = false; $("#exportList").hidden = true; $("#exportDone").hidden = true;
   $('[data-act="exportEach"]').textContent = isTouch && navigator.canShare ? "Save to Files" : "Save one by one";
-  $("#exportDialog").showModal();
+  openSheet($("#exportDialog"));
 }
 
 function tagsFor(t) {
@@ -666,7 +797,10 @@ async function runExport(mode) {
       for (const f of files) { download(f, f.name); await new Promise((r) => setTimeout(r, 350)); }
     }
   }
-  $("#exportDoneText").textContent = `${out.length} ${out.length === 1 ? "file" : "files"} ready${failed ? `, ${failed} failed` : ""}. Next, add them to Spotify’s Local Files.`;
+  const rebuilt = chosen.some((t) => t.build);
+  buzz(12);
+  $("#exportDoneText").textContent = `${out.length} ${out.length === 1 ? "file" : "files"} ready${failed ? `, ${failed} failed` : ""}. ` +
+    (rebuilt ? "For new builds, save over the old files in the same folder so Spotify keeps one copy of each song." : "Next, add them to Spotify’s Local Files.");
   $("#exportDone").hidden = false;
   $("#sendExports").hidden = false;
 }
@@ -684,8 +818,7 @@ let link = null, linkCode = null;
 const linkURL = () => `${location.origin}/#link=${cleanCode(linkCode)}`;
 
 async function openLink(joinCode) {
-  const d = $("#linkDialog");
-  if (!d.open) d.showModal();
+  openSheet($("#linkDialog"));
   if (joinCode) { await startLink(joinCode, true); return; }
   if (!link) await startLink(newCode(), false);
 }
@@ -777,12 +910,6 @@ function toast(text, kind = "", action) {
   }, action ? 7000 : 4200);
 }
 
-function setTint(name) {
-  document.documentElement.dataset.tint = name;
-  $$("#tintMenu [data-tint]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.tint === name)));
-  try { localStorage.setItem("taglet-tint", name); } catch {}
-}
-
 /** A paper tag on a string: a quick knock, then it settles on a spring. */
 function swing(el, deg = 10) {
   if (!el || !window.Motion || calm.matches) return;
@@ -806,15 +933,65 @@ function swing(el, deg = 10) {
   addEventListener("load", () => setTimeout(() => swing(tag, 7), 250));
 }
 
+// ---------------------------------------------------------------- install prompt (mobile browser only)
+
+// Like Any Day Now: on a phone that's in the browser rather than the Home Screen app, a sheet explains how to
+// install, every time the app is opened. Android gets a one-tap Install button when the browser offers one.
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isAndroid = /android/i.test(navigator.userAgent);
+let installEvent = null;
+addEventListener("beforeinstallprompt", (e) => {
+  if (!isAndroid) return; // desktop browsers keep their own install button in the address bar
+  e.preventDefault();
+  installEvent = e;
+  showInstallHint();
+  const btn = $("#installSheet [data-act='install']");
+  if (btn) btn.hidden = false;
+});
+addEventListener("appinstalled", () => { installEvent = null; showInstallHint(); $("#installSheet")?.close(); });
+
+function showInstallHint() {
+  const el = $("#installHint");
+  el.hidden = standalone || !installEvent;
+  if (!el.hidden) el.innerHTML = `<button class="btn ghost big" type="button" data-act="install">${icon("phone")}<span>Add Taglet to your home screen</span></button>`;
+}
+
+function installPrompt() {
+  if (standalone || !(isIOS || isAndroid)) return;
+  const steps = isIOS
+    ? `<li>Tap <svg class="inline-icon" aria-hidden="true"><use href="#i-share"/></svg> <b>Share</b> in Safari’s toolbar.</li>
+       <li>Choose <b>Add to Home Screen</b> (scroll down the list if you don’t see it).</li>
+       <li>Tap <b>Add</b>, then open Taglet from your Home Screen.</li>`
+    : `<li>Tap the browser’s <b>⋮</b> menu.</li>
+       <li>Choose <b>Add to Home screen</b> or <b>Install app</b>.</li>
+       <li>Open Taglet from your home screen.</li>`;
+  const dlg = document.createElement("dialog");
+  dlg.className = "sheet glass";
+  dlg.id = "installSheet";
+  dlg.setAttribute("aria-labelledby", "installTitle");
+  dlg.innerHTML = `<div class="sheet-inner">
+    <div class="sheet-head"><h2 id="installTitle">Add Taglet to your Home Screen</h2><button class="btn ghost icon-only" type="button" data-close aria-label="Close">${icon("close")}</button></div>
+    <p class="hint-lg">It opens full screen like a regular app, works offline once loaded, and keeps your songs one tap away.</p>
+    <ol class="steps-ol">${steps}</ol>
+    <div class="sheet-actions">
+      <button class="btn ghost" type="button" data-close>Not now</button>
+      <button class="btn primary" type="button" data-act="install" ${installEvent ? "" : "hidden"}>${icon("phone")}<span>Install</span></button>
+    </div>
+  </div>`;
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  openSheet(dlg);
+}
+
 // ---------------------------------------------------------------- boot
 
-try { const t = localStorage.getItem("taglet-tint"); if (t) setTint(t); } catch {}
 wide.addEventListener("change", () => { if (document.body.dataset.view !== "welcome") setView(wide.matches ? "album" : "album"); });
 addEventListener("beforeunload", (e) => { if (tracks.size) e.preventDefault(); });
 
 {
   const m = location.hash.match(/link=([0-9A-Za-z-]{10,11})/);
   if (m) { history.replaceState(null, "", location.pathname); addEventListener("load", () => openLink(m[1])); }
+  else addEventListener("load", () => setTimeout(installPrompt, 700));
 }
 
 if ("serviceWorker" in navigator) {

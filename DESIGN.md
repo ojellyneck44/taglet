@@ -4,7 +4,7 @@ The source of truth is [docs/brand.md](docs/brand.md) (palette, type, icon, glas
 
 Quick rules:
 
-- Dark warm inks, one themeable accent (Manila by default), and Signal only for problems.
+- Dark warm inks, one fixed accent (Patina #46C2B0), and Signal only for problems.
 - Bricolage Grotesque for display, Hanken Grotesk for interface text, JetBrains Mono for data only.
 - Glass only on the floating control layer. Content is solid. Album art lights the room behind the glass.
 - Lists, not card grids. Album art at 5px radius, fields at 9px, buttons and bars as capsules.

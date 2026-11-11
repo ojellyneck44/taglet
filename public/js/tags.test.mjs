@@ -4,12 +4,17 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildId3, mp3AudioRange, parseFfmetadata, splitArtists, splitNumber, zipParts, crc32, joinArtists } from "./tags.js";
+import { buildKey, buildId3, mp3AudioRange, parseFfmetadata, splitArtists, splitNumber, zipParts, crc32, joinArtists } from "./tags.js";
 
 assert.equal(joinArtists(["X", " Y ", "", "Z"]), "X, Y, Z");
 assert.deepEqual(splitArtists("A, B feat. C; D"), ["A", "B", "C", "D"]);
 assert.deepEqual(splitArtists("AC/DC"), ["AC/DC"]);
 assert.deepEqual(splitNumber("3/12"), [3, 12]);
+// New builds of one song match; different songs don't.
+for (const [a, b] of [["Night Drive v2.wav", "night drive.mp3"], ["night_drive_FINAL_master.flac", "Night Drive"], ["Night Drive (mix 3) 2026-11-10.wav", "Night Drive"], ["Night Drive - bounce 4.aiff", "night-drive.wav"]])
+  assert.equal(buildKey(a), buildKey(b), `${a} vs ${b}`);
+assert.notEqual(buildKey("Night Drive.wav"), buildKey("Day Drive.wav"));
+assert.notEqual(buildKey("Song 2.wav"), buildKey("Song.wav")); // a bare number is part of the title
 assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
 
 const meta = parseFfmetadata(";FFMETADATA1\ntitle=Hello\\=World\nARTIST=A\\;B\nlyrics=line1\\\nline2\n[STREAM]\ntitle=nope\n");
