@@ -3,6 +3,10 @@ main = "src/worker.js"
 compatibility_date = "2026-06-01"
 workers_dev = true
 
+[vars]
+# Email codes stay hidden until taglet.net is verified for sending; set to "on" (or remove) and deploy.
+EMAIL_SENDING = "off"
+
 routes = [
   { pattern = "taglet.net", custom_domain = true },
   { pattern = "www.taglet.net", custom_domain = true },

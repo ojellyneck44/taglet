@@ -33,7 +33,8 @@ const token = (bytes = 32) => hex(crypto.getRandomValues(new Uint8Array(bytes)))
 export const sha256 = async (s) => hex(await crypto.subtle.digest("SHA-256", typeof s === "string" ? new TextEncoder().encode(s) : s));
 
 export const providers = (env) => ({
-  email: !!env.RESEND_API_KEY || env.DEV_LOG_CODES === "1",
+  // EMAIL_SENDING = "off" in wrangler.toml hides email sign-in until the sending domain is verified.
+  email: env.EMAIL_SENDING !== "off" && (!!env.RESEND_API_KEY || env.DEV_LOG_CODES === "1"),
   apple: !!(env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY),
   google: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
   github: !!(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
