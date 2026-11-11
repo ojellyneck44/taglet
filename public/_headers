@@ -20,3 +20,5 @@
   Cache-Control: no-transform
 /brand/
   Cache-Control: no-transform
+/s/
+  Cache-Control: no-transform

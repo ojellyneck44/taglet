@@ -1,6 +1,6 @@
 // Everything that touches audio runs here, inside ffmpeg.wasm in a worker on this device.
 import { FFmpeg } from "/vendor/ffmpeg/index.js";
-import { buildId3, mp3AudioRange, parseFfmetadata, splitArtists, splitNumber } from "./tags.js";
+import { buildId3, mp3AudioRange, mp3Info, parseFfmetadata, readId3, splitArtists, splitNumber } from "./tags.js";
 
 // The core is 31 MB; Cloudflare caps a single asset at 25 MB, so it ships in three parts.
 const WASM_PARTS = ["/vendor/core/core-00.wasm", "/vendor/core/core-01.wasm", "/vendor/core/core-02.wasm"];
@@ -46,10 +46,22 @@ function serial(job) {
 
 async function withInput(file, fn) {
   const dir = "/in" + Math.random().toString(36).slice(2, 8);
-  await ff.createDir(dir);
-  await ff.mount("WORKERFS", { files: [file] }, dir); // reads the File in place, no copy into wasm memory
-  try { return await fn(`${dir}/${file.name}`); }
-  finally { await ff.unmount(dir); await ff.deleteDir(dir); }
+  let mounted = false;
+  try {
+    await ff.createDir(dir);
+    await ff.mount("WORKERFS", { files: [file] }, dir); // reads the File in place, no copy into wasm memory
+    mounted = true;
+  } catch { /* some browsers (iOS Safari with picked files) refuse the mount after the first file */ }
+  if (mounted) {
+    try { return await fn(`${dir}/${file.name}`); }
+    catch (err) { if (err?.message) throw err; } // a bare filesystem error: fall through and copy the file in
+    finally { await ff.unmount(dir).catch(() => {}); await ff.deleteDir(dir).catch(() => {}); }
+  } else await ff.deleteDir(dir).catch(() => {});
+  // Fallback: copy the file into the engine's memory. Costs RAM for the length of one file, but always works.
+  const path = `/copy-${Math.random().toString(36).slice(2, 8)}${(file.name.match(/\.[A-Za-z0-9]{1,5}$/) || [""])[0]}`;
+  await ff.writeFile(path, new Uint8Array(await file.arrayBuffer()));
+  try { return await fn(path); }
+  finally { await ff.deleteFile(path).catch(() => {}); }
 }
 
 async function exec(args) {
@@ -62,8 +74,33 @@ async function tryRead(path) {
   try { const d = await ff.readFile(path); await ff.deleteFile(path); return d; } catch { return null; }
 }
 
+const looksMp3 = (file) => /\.mp3$/i.test(file.name) || file.type === "audio/mpeg";
+
+/** MP3s (Taglet's own exports included) are read in plain JS: tags, cover and length, no engine needed. */
+async function probeMp3(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const info = mp3Info(bytes);
+  if (!info) return null;
+  const id3 = readId3(bytes);
+  const t = id3?.tags || {};
+  return {
+    codec: "mp3", sampleRate: info.sampleRate, duration: info.duration,
+    art: id3?.art?.bytes?.length ? new Blob([id3.art.bytes], { type: id3.art.mime }) : null,
+    tags: {
+      title: t.title || file.name.replace(/\.[^.]+$/, ""), artists: t.artists || [], album: t.album || "", albumArtist: t.albumArtist || "",
+      track: t.track || 0, trackTotal: t.trackTotal || 0, disc: t.disc || 0, discTotal: t.discTotal || 0, year: t.year || "", genre: t.genre || "",
+      composer: t.composer || "", comment: t.comment || "", lyrics: t.lyrics || "", bpm: t.bpm || "", isrc: t.isrc || "",
+      copyright: t.copyright || "", publisher: t.publisher || "", compilation: !!t.compilation,
+    },
+  };
+}
+
 /** Read tags, cover art and stream facts from any file ffmpeg understands. */
-export function probe(file) {
+export async function probe(file) {
+  if (looksMp3(file)) {
+    const quick = await probeMp3(file).catch(() => null);
+    if (quick) return quick;
+  }
   return serial(async () => {
     await loadEngine();
     return withInput(file, async (path) => {

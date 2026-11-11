@@ -185,3 +185,116 @@ export const buildKey = (s) => String(s || "").toLowerCase()
   .replace(/\b(v|ver|version|take|mix|mixdown|bounce|render|master|mastered|final|draft|wip|rough|demo|edit|new)\s*\d*\b/g, " ")
   .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
+
+// ---------- reading MP3s without the audio engine ----------
+// Taglet's own exports (and most MP3s) carry ID3v2.3/2.4 tags and a LAME/Xing header, which is all an import
+// needs. Reading them in plain JS means MP3s never depend on ffmpeg.wasm's file mount, the part that fails with
+// files from the iOS picker, and imports are faster.
+
+function decodeText(enc, b) {
+  if (enc === 0) return String.fromCharCode(...b);
+  if (enc === 3) return new TextDecoder("utf-8").decode(b);
+  let le = enc === 1, start = 0;
+  if (b[0] === 0xff && b[1] === 0xfe) { le = true; start = 2; } else if (b[0] === 0xfe && b[1] === 0xff) { le = false; start = 2; }
+  let s = "";
+  for (let i = start; i + 1 < b.length; i += 2) s += String.fromCharCode(le ? b[i] | (b[i + 1] << 8) : (b[i] << 8) | b[i + 1]);
+  return s;
+}
+const strip0 = (s) => s.replace(/\u0000+$/, "").split("\u0000");
+
+/** Find the end of a null-terminated string in `b` from `at` for text encoding `enc` (2-byte terminator for UTF-16). */
+function nullEnd(b, at, enc) {
+  if (enc === 1 || enc === 2) { for (let i = at; i + 1 < b.length; i += 2) if (b[i] === 0 && b[i + 1] === 0) return i; return b.length; }
+  const i = b.indexOf(0, at); return i < 0 ? b.length : i;
+}
+
+/** Parse the first ID3v2 tag. Returns { tags, art } or null when the file has no ID3v2.3/2.4 tag. */
+export function readId3(bytes) {
+  if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return null;
+  const ver = bytes[3];
+  if (ver !== 3 && ver !== 4) return null;
+  const size = (bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9];
+  const end = Math.min(bytes.length, 10 + size);
+  let p = 10;
+  if (bytes[5] & 0x40) { // extended header
+    const ext = ver === 4 ? (bytes[p] << 21) | (bytes[p + 1] << 14) | (bytes[p + 2] << 7) | bytes[p + 3] : ((bytes[p] << 24) | (bytes[p + 1] << 16) | (bytes[p + 2] << 8) | bytes[p + 3]) + 4;
+    p += ext;
+  }
+  const f = {};
+  let art = null;
+  while (p + 10 <= end) {
+    const id = String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3]);
+    if (!/^[A-Z0-9]{4}$/.test(id)) break; // padding
+    const n = ver === 4 ? (bytes[p + 4] << 21) | (bytes[p + 5] << 14) | (bytes[p + 6] << 7) | bytes[p + 7]
+      : ((bytes[p + 4] << 24) | (bytes[p + 5] << 16) | (bytes[p + 6] << 8) | bytes[p + 7]) >>> 0;
+    const body = bytes.subarray(p + 10, Math.min(end, p + 10 + n));
+    p += 10 + n;
+    if (!body.length) continue;
+    const enc = body[0];
+    if (id[0] === "T" && id !== "TXXX") f[id] = strip0(decodeText(enc, body.subarray(1)));
+    else if (id === "COMM" || id === "USLT") { // enc, lang(3), description\0, text
+      const d = nullEnd(body, 4, enc), skip = enc === 1 || enc === 2 ? 2 : 1;
+      f[id] = [decodeText(enc, body.subarray(d + skip)).replace(/\u0000+$/, "")];
+    } else if (id === "APIC" && !art) { // enc, mime\0, type, description\0, data
+      const m = body.indexOf(0, 1);
+      const mime = String.fromCharCode(...body.subarray(1, m)) || "image/jpeg";
+      const d = nullEnd(body, m + 2, enc), skip = enc === 1 || enc === 2 ? 2 : 1;
+      art = { bytes: body.slice(d + skip), mime: mime.includes("/") ? mime : `image/${mime.toLowerCase().replace("jpg", "jpeg")}` };
+    }
+  }
+  const one = (k) => (f[k] ? f[k][0].trim() : "");
+  const [track, trackTotal] = splitNumber(one("TRCK"));
+  const [disc, discTotal] = splitNumber(one("TPOS"));
+  return {
+    art,
+    tags: {
+      title: one("TIT2"), artists: f.TPE1 ? f.TPE1.flatMap(splitArtists) : [], album: one("TALB"), albumArtist: one("TPE2"),
+      track, trackTotal, disc, discTotal, year: (one("TYER") || one("TDRC")).slice(0, 4), genre: one("TCON"),
+      composer: one("TCOM"), comment: one("COMM"), lyrics: one("USLT"), bpm: one("TBPM"), isrc: one("TSRC"),
+      copyright: one("TCOP"), publisher: one("TPUB"), compilation: one("TCMP") === "1",
+    },
+  };
+}
+
+const BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]; // MPEG-1 Layer III, kbps
+const RATES = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+
+/** Parse a Layer III frame header at i: { verBits, sampleRate, kbps, len } or null. */
+function frameAt(bytes, i) {
+  if (i + 4 > bytes.length || bytes[i] !== 0xff || (bytes[i + 1] & 0xe0) !== 0xe0) return null;
+  const verBits = (bytes[i + 1] >> 3) & 3, layer = (bytes[i + 1] >> 1) & 3;
+  const bri = bytes[i + 2] >> 4, sri = (bytes[i + 2] >> 2) & 3, pad = (bytes[i + 2] >> 1) & 1;
+  if (verBits === 1 || layer !== 1 || bri === 0 || bri === 15 || sri === 3) return null; // Layer III only
+  const sampleRate = RATES[verBits][sri];
+  const kbps = verBits === 3 ? BITRATES[bri] : [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160][bri];
+  const len = Math.floor(((verBits === 3 ? 144000 : 72000) * kbps) / sampleRate) + pad;
+  return { verBits, sampleRate, kbps, len };
+}
+
+/** Sample rate and duration of an MP3 from its first frame (and its Xing/Info header when present), or null. */
+export function mp3Info(bytes) {
+  const [start, end] = mp3AudioRange(bytes);
+  for (let i = start; i < Math.min(end - 4, start + 65536); i++) {
+    const h = frameAt(bytes, i);
+    if (!h) continue;
+    // A real stream chains: the next two frames start exactly where this one ends, with the same version and rate.
+    // Random data matches one header by chance; three in a row is what tells audio from noise.
+    const h2 = frameAt(bytes, i + h.len), h3 = h2 && frameAt(bytes, i + h.len + h2.len);
+    if (!h2 || !h3 || h2.sampleRate !== h.sampleRate || h3.sampleRate !== h.sampleRate) continue;
+    const { verBits } = h;
+    const bri = bytes[i + 2] >> 4;
+    const sampleRate = h.sampleRate;
+    const mono = (bytes[i + 3] >> 6) === 3;
+    const samplesPerFrame = verBits === 3 ? 1152 : 576;
+    const sideInfo = verBits === 3 ? (mono ? 17 : 32) : (mono ? 9 : 17);
+    const x = i + 4 + sideInfo;
+    const tag = String.fromCharCode(bytes[x], bytes[x + 1], bytes[x + 2], bytes[x + 3]);
+    if ((tag === "Xing" || tag === "Info") && (bytes[x + 7] & 1)) {
+      const frames = ((bytes[x + 8] << 24) | (bytes[x + 9] << 16) | (bytes[x + 10] << 8) | bytes[x + 11]) >>> 0;
+      return { sampleRate, duration: (frames * samplesPerFrame) / sampleRate };
+    }
+    const kbps = verBits === 3 ? BITRATES[bri] : [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160][bri];
+    return { sampleRate, duration: ((end - i) * 8) / (kbps * 1000) }; // constant bitrate estimate
+  }
+  return null;
+}

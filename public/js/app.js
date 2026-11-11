@@ -170,6 +170,7 @@ async function importAudio(audio, source, opts) {
   const batch = { loose: null }; // untagged files dropped together become one album
   const builds = [], addedNow = new Set(), attached = [];
   let n = 0;
+  const failed = []; // [file name, reason], reported together at the end
   audio.sort((a, b) => collator.compare(a.name, b.name));
   for (const file of audio) {
     n++;
@@ -189,10 +190,11 @@ async function importAudio(audio, source, opts) {
       renderShelf();
       if (current.album === album.id) renderAlbum();
     } catch (err) {
-      toast(`Couldn’t read ${file.name}. ${err.message || ""}`, "err");
+      failed.push([file.name, readReason(err)]);
     }
   }
   engine.hidden = true;
+  if (failed.length) reportFailed(failed, audio.length);
   let replaced = [];
   if (builds.length) {
     const picks = await askBuilds(builds);
@@ -638,14 +640,15 @@ document.addEventListener("click", (e) => {
 $("#localChip").addEventListener("click", () => { const tip = $("#localTip"); tip.classList.toggle("show"); setTimeout(() => tip.classList.remove("show"), 5000); });
 
 let pickInto = null;
-$("#pickAudio").addEventListener("change", (e) => { const into = pickInto; pickInto = null; addFiles(e.target.files, "", { into }); e.target.value = ""; });
+// iOS can invalidate picked files that haven't been read yet once the input is cleared, so clear it only afterwards.
+$("#pickAudio").addEventListener("change", async (e) => { const into = pickInto; pickInto = null; try { await addFiles([...e.target.files], "", { into }); } finally { e.target.value = ""; } });
 $("#pickImage").addEventListener("change", (e) => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
   const a = cropTarget && $("#cropDialog").open ? cropTarget : albums.get(current.album);
   if (a) openCrop(f, a);
 });
-$("#pickBuild").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f && current.track) addFiles([f], "", { target: current.track }); });
+$("#pickBuild").addEventListener("change", async (e) => { const f = e.target.files[0]; try { if (f && current.track) await addFiles([f], "", { target: current.track }); } finally { e.target.value = ""; } });
 $("#pickSend").addEventListener("change", (e) => { sendFiles([...e.target.files]); e.target.value = ""; });
 
 const player = $("#player");
@@ -1173,7 +1176,28 @@ $("#joinCode").addEventListener("input", (e) => { const c = cleanCode(e.target.v
 
 // ---------------------------------------------------------------- toasts, tint, motion
 
+/** Plain words for why a file couldn't be read, and what to try. */
+function readReason(err) {
+  const m = String(err?.message || err?.name || "");
+  if (/NotReadable|NotFound|permission|could not be read/i.test(m)) return "your device didn’t hand the file over. Pick it again, or save it to Files first";
+  if (/no audio/i.test(m)) return "there’s no audio in it Taglet can read";
+  if (/download the audio engine/i.test(m)) return m;
+  return "the audio engine couldn’t open it. Try exporting it again, or convert it to WAV";
+}
+
+/** One message for every file that failed, instead of a stack of toasts over the form. */
+function reportFailed(failed, total) {
+  const names = failed.map(([n]) => `“${n}”`);
+  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
+  const reasons = [...new Set(failed.map(([, r]) => r))];
+  const head = failed.length === 1 ? `Couldn’t read ${list}` : `${failed.length} of ${total} songs couldn’t be read (${list})`;
+  toast(`${head}: ${reasons.length === 1 ? reasons[0] : "each for its own reason. Try them one at a time"}.`, "err");
+}
+
 function toast(text, kind = "", action) {
+  // At most two at once, so toasts never pile up over the fields.
+  const shown = $$("#toasts .toast");
+  if (shown.length >= 2) shown[0].remove();
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
   el.innerHTML = `<p></p>`;

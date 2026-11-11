@@ -56,7 +56,7 @@ async function boot() {
   main.innerHTML = `
     <div class="cover" id="cover">${icon("image")}</div>
     <div class="info">
-      <p class="kind">${single ? "Single" : "Album"} shared with Taglet</p>
+      <p class="kind">${single ? "Single" : "Album"} shared with you · listen and download only</p>
       <h1>${esc(meta.title)}</h1>
       ${meta.artist ? `<p class="by">${esc(meta.artist)}</p>` : ""}
       <p class="facts">${[meta.year, meta.genre, single ? fmt(total) : `${meta.tracks.length} songs, ${total >= 60 ? `${Math.round(total / 60)} min` : fmt(total)}`].filter(Boolean).map(esc).join(" · ")}</p>
