@@ -379,7 +379,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 44px; }
 /* ---------- bottom sheets (phones): grab handle and drag to dismiss, as in Any Day Now ---------- */
 .sheet-handle { display: none; }
 @media (max-width: 899px) {
-  .sheet-handle { display: block; position: sticky; top: 0; z-index: 1; height: 22px; margin: -14px 0 -4px; cursor: grab; touch-action: none; }
+  .sheet-handle { display: block; position: sticky; top: 0; z-index: 1; height: 22px; margin: -14px 0 6px; cursor: grab; touch-action: none; }
   .sheet-handle::before { content: ""; position: absolute; left: 50%; top: 8px; width: 40px; height: 5px; margin-left: -20px; border-radius: 3px; background: var(--line-strong); }
   .sheet .sheet-head { touch-action: none; }
   .sheet { overscroll-behavior: contain; }
@@ -552,3 +552,7 @@ body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under
 .link-form .btn { flex: none; }
 .sheet .link-form { width: 100%; margin: var(--s4) 0 var(--s3); }
 .sheet .link-form input { height: 44px; }
+
+/* Titles wrap onto more lines instead of being cut off mid-word (Enter still doesn't add a line). */
+textarea.autosize { display: block; resize: none; overflow: hidden; field-sizing: content; }
+.link-form input { text-overflow: ellipsis; }

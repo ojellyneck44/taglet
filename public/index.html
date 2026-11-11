@@ -83,7 +83,7 @@
       </div>
       <form class="link-form" data-link-form>
         <label class="sr-only" for="welcomeLink">YouTube or SoundCloud link</label>
-        <input id="welcomeLink" name="url" type="url" inputmode="url" autocomplete="off" placeholder="Or paste a YouTube or SoundCloud link" required>
+        <input id="welcomeLink" name="url" type="url" inputmode="url" autocomplete="off" placeholder="Paste a YouTube or SoundCloud link" required>
         <button class="btn primary small" type="submit">Add</button>
       </form>
       <p class="formats">WAV, FLAC, AIFF, ALAC, M4A, OGG, Opus, WMA and MP3<span class="drop-hint"> · or drop them anywhere</span></p>
@@ -123,7 +123,7 @@
         </div>
         <div class="album-fields">
           <label class="sr-only" for="fAlbum" id="albumTitleLabel">Album title</label>
-          <input class="album-title" id="fAlbum" data-album="title" placeholder="Album title" autocomplete="off" spellcheck="false">
+          <textarea class="album-title autosize" id="fAlbum" data-album="title" rows="1" placeholder="Album title" autocomplete="off" spellcheck="false"></textarea>
           <div class="field-row">
             <label class="field"><span>Album artist</span><input data-album="albumArtist" placeholder="Who the album is by" autocomplete="off" spellcheck="false"></label>
             <label class="field narrow"><span>Year</span><input data-album="year" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
@@ -151,7 +151,7 @@
       <div class="insp-view" id="inspMain">
         <button class="back" type="button" data-back="album"><svg aria-hidden="true"><use href="#i-back"/></svg><span id="backToAlbum">Album</span></button>
         <div class="pane-head"><h2 id="inspTitle">Track</h2><span class="muted mono" id="inspFile"></span></div>
-        <label class="field"><span>Title</span><input data-track="title" autocomplete="off" spellcheck="false"></label>
+        <label class="field"><span>Title</span><textarea class="autosize" data-track="title" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
         <fieldset class="artists">
           <legend>Artists</legend>
           <ol id="artistList"></ol>

@@ -449,6 +449,7 @@ function renderAlbum() {
     if (input.type === "checkbox") input.checked = !!v;
     else if (document.activeElement !== input) input.value = v ?? "";
   }
+  fitAll();
   const art = $("#artImg");
   if (a.art) art.src = a.art.url; else art.removeAttribute("src");
   art.hidden = !a.art;
@@ -499,6 +500,7 @@ function renderInspector() {
   for (const input of $$("[data-track]")) {
     if (document.activeElement !== input) input.value = t.tags[input.dataset.track] || "";
   }
+  fitAll();
   $("#inspFile").textContent = t.file ? `${t.file.name}${t.build ? ` · build ${t.build}` : ""}` : "No audio here";
   $('[data-act="replaceAudio"] span').textContent = t.file ? "New build" : "Add audio";
   $("#inspFile").title = `${t.codec.toUpperCase()} · ${(t.sampleRate / 1000).toFixed(1)} kHz`;
@@ -534,8 +536,18 @@ function updateExport() {
 
 // ---------------------------------------------------------------- editing
 
+/** One-line fields that wrap: grow to fit (where field-sizing isn't supported) and never hold a line break. */
+function fitText(el) {
+  if (CSS.supports("field-sizing", "content")) return;
+  el.style.height = "auto"; el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+}
+const fitAll = () => $$("textarea.autosize").forEach(fitText);
+addEventListener("resize", fitAll);
+document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("textarea.autosize")) { e.preventDefault(); e.target.blur(); } });
+
 document.addEventListener("input", (e) => {
   const el = e.target;
+  if (el.matches("textarea.autosize")) { if (/\n/.test(el.value)) el.value = el.value.replace(/\s*\n+\s*/g, " "); fitText(el); }
   const a = albums.get(current.album), t = tracks.get(current.track);
   if (el.dataset.album && a) {
     const key = el.dataset.album;
