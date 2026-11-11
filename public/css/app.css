@@ -578,3 +578,7 @@ textarea.autosize { display: block; resize: none; overflow: hidden; field-sizing
 
 /* Desktop upload screen: the box fits its content and sits in the middle */
 @media (min-width: 900px) { .dropzone { align-self: center; } }
+
+.welcome-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 var(--s4); margin: var(--s4) 0 0; font-size: var(--t-sm); }
+.welcome-links a { color: var(--paper-3); text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
+.welcome-links a:hover { color: var(--paper); text-decoration: underline; }

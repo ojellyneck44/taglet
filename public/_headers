@@ -1,5 +1,6 @@
 /*
   X-Content-Type-Options: nosniff
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
   Cross-Origin-Opener-Policy: same-origin
@@ -21,4 +22,14 @@
 /brand/
   Cache-Control: no-transform
 /s/
+  Cache-Control: no-transform
+/guides/*
+  Cache-Control: no-transform
+/guides/
+  Cache-Control: no-transform
+/about/
+  Cache-Control: no-transform
+/contact/
+  Cache-Control: no-transform
+/terms/
   Cache-Control: no-transform

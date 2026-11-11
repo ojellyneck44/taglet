@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Convert FLAC to MP3 for free · Taglet</title>
+<meta name="description" content="How to convert FLAC files to 320 kbps MP3 for free in your browser, keep the tags and cover art, and what you lose and keep.">
+<meta name="author" content="Stevie McLane">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://taglet.net/guides/flac-to-mp3/">
+<meta name="theme-color" content="#0b0a09">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:title" content="Convert FLAC to MP3 for free · Taglet">
+<meta property="og:description" content="How to convert FLAC files to 320 kbps MP3 for free in your browser, keep the tags and cover art, and what you lose and keep.">
+<meta property="og:url" content="https://taglet.net/guides/flac-to-mp3/">
+<meta property="og:image" content="https://taglet.net/og-2.png">
+<link rel="stylesheet" href="/css/base.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="doc-bar glass">
+  <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#i-mark"/></svg><span>taglet</span></a>
+  <a class="btn primary small" href="/">Open Taglet</a>
+</header>
+<main class="doc" id="main">
+<h1>How to convert FLAC to MP3</h1>
+<p class="lede">FLAC is perfect for archiving, but plenty of phones, cars and apps want MP3. Here’s how to convert FLAC to MP3 without losing your tags or cover art, and without uploading anything.</p>
+<h2>Why convert FLAC to MP3</h2>
+<p>FLAC is lossless: it stores the original audio exactly, so files are large, often 20 to 40 MB per song. MP3 is lossy but much smaller, and it works on virtually every player. Spotify’s Local Files feature, for example, plays MP3, M4A and MP4 but not FLAC, so FLAC files simply don’t show up.</p>
+<h2>Steps</h2>
+<ol>
+  <li>Open <a href="/">Taglet</a> and drop your FLAC files in, or tap the upload box and pick them. Taglet reads the title, artist, album and cover already inside each file.</li>
+  <li>Check the tags. Anything missing is flagged; fill it in once for the whole album.</li>
+  <li>Choose a quality. <strong>320 kbps</strong> is the highest MP3 quality and a safe default. <strong>V0</strong> is variable bitrate, usually a bit smaller at near-identical sound.</li>
+  <li>Export. You get MP3 files with the tags and cover written in, as a zip or one by one.</li>
+</ol>
+<h2>What you lose and keep</h2>
+<p>MP3 throws away audio detail that most listeners can’t hear at 320 kbps, which is why the files shrink to roughly a quarter of the size. The conversion can’t be undone, so keep your FLAC originals; Taglet never alters them. Tags, track order and cover art are kept. High sample rates such as 96 kHz are brought down to 44.1 kHz, the standard for MP3.</p>
+<h2>Is it private?</h2>
+<p>Yes. The conversion runs inside your browser using ffmpeg compiled to WebAssembly, so your music never leaves your device. The first time, your browser downloads the converter (about 10 MB) and keeps it, so it works offline after that.</p>
+<h2>Troubleshooting</h2>
+<ul>
+  <li><strong>The converted files have no cover.</strong> Add one in Taglet before exporting; any square image works and Taglet crops it for you.</li>
+  <li><strong>Songs from one album appear separately.</strong> Make sure the album and album artist tags match across the tracks. Taglet groups songs by these.</li>
+  <li><strong>It’s slow on a big album.</strong> Conversion happens on your device, so a phone takes longer than a computer. Keep the tab open until it finishes.</li>
+</ul>
+<p class="note">Ready to try it? <a href="/">Open Taglet</a>: drop your files in, fix the tags, and export. Nothing is uploaded.</p>
+<h2>More guides</h2><ul><li><a href="/guides/wav-to-mp3/">Convert WAV to MP3</a></li><li><a href="/guides/fix-mp3-tags/">Fix MP3 tags</a></li><li><a href="/guides/add-cover-art/">Add album cover art to MP3s</a></li><li><a href="/spotify/">Add your own files to Spotify</a></li></ul>
+</main>
+<footer class="site-foot">
+  <a href="/">Taglet</a><a href="/guides/">Guides</a><a href="/about/">About</a><a href="/contact/">Contact</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><span>Made by Stevie McLane</span>
+</footer>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="i-mark" viewBox="0 0 32 32"><path d="M12.2 3.5h7.6c1.2 0 2.2 1 2.2 2.2v4l4.4 5.4c.4.5.6 1.1.6 1.7v9.5c0 1.6-1.3 2.9-2.9 2.9H7.9C6.3 29.2 5 27.9 5 26.3v-9.5c0-.6.2-1.2.6-1.7L10 9.7v-4c0-1.2 1-2.2 2.2-2.2Z" fill="currentColor" transform="rotate(-14 16 16)"/><circle cx="16" cy="13" r="2.3" fill="#0b0a09" transform="rotate(-14 16 16)"/></symbol></defs></svg>
+<script src="/js/doc.js"></script>
+</body>
+</html>

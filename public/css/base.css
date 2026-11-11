@@ -153,3 +153,7 @@ input, textarea { caret-color: var(--accent); }
   *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 :root[data-native] .site-foot { display: none; }
+
+.guide-list { list-style: none; padding: 0 !important; display: grid; gap: var(--s4); }
+.guide-list h2 { margin: 0 0 4px; font-size: var(--t-lg, 1.15rem); }
+.guide-list p { margin: 0; color: var(--paper-2); }
