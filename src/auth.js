@@ -1,5 +1,5 @@
 // Optional accounts, ported from Any Day Now: sign in with an emailed code, Apple, Google or GitHub, so the library
-// (albums, tags, order and covers) follows you between devices. Audio stays on each device.
+// (albums, tags, order, covers and the audio itself, kept in R2) follows you between devices.
 // Sessions are random tokens in an HttpOnly cookie; only their SHA-256 is stored.
 
 const DAY = 86400000;
@@ -22,6 +22,7 @@ export async function authDb(env) {
       db.prepare("CREATE TABLE IF NOT EXISTS login_codes (email TEXT PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0)"),
       db.prepare("CREATE TABLE IF NOT EXISTS user_data (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at INTEGER NOT NULL)"),
       db.prepare("CREATE TABLE IF NOT EXISTS covers (user_id TEXT NOT NULL, hash TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (user_id, hash))"),
+      db.prepare("CREATE TABLE IF NOT EXISTS audio (user_id TEXT NOT NULL, track_id TEXT NOT NULL, size INTEGER NOT NULL, PRIMARY KEY (user_id, track_id))"),
     ]);
     ready = true;
   }
@@ -261,10 +262,12 @@ export async function signOut(env, request) {
 
 export async function deleteAccount(env, user) {
   const db = await authDb(env);
+  await dropAudio(env, user, null);
   await db.batch([
     db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id),
     db.prepare("DELETE FROM user_data WHERE user_id = ?").bind(user.id),
     db.prepare("DELETE FROM covers WHERE user_id = ?").bind(user.id),
+    db.prepare("DELETE FROM audio WHERE user_id = ?").bind(user.id),
     db.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
   ]);
 }
@@ -297,7 +300,11 @@ export function cleanLibrary(input) {
 
 export async function readLibrary(env, user) {
   const row = await (await authDb(env)).prepare("SELECT data, updated_at FROM user_data WHERE user_id = ?").bind(user.id).first();
-  return row ? { ...JSON.parse(row.data), updatedAt: row.updated_at } : { albums: [], tracks: [], deleted: {}, updatedAt: 0 };
+  if (!row) return { albums: [], tracks: [], deleted: {}, updatedAt: 0 };
+  const lib = JSON.parse(row.data);
+  const have = new Set((await (await authDb(env)).prepare("SELECT track_id FROM audio WHERE user_id = ?").bind(user.id).all()).results.map((r) => r.track_id));
+  for (const t of lib.tracks) t.audio = have.has(t.id); // whether the song's audio is in the account's storage
+  return { ...lib, updatedAt: row.updated_at };
 }
 
 export async function writeLibrary(env, user, input) {
@@ -307,6 +314,7 @@ export async function writeLibrary(env, user, input) {
   const updatedAt = Date.now();
   const db = await authDb(env);
   const keep = data.albums.map((a) => a.cover).filter(Boolean);
+  await dropAudio(env, user, new Set(data.tracks.map((t) => t.id)));
   await db.batch([
     db.prepare("INSERT OR REPLACE INTO user_data (user_id, data, updated_at) VALUES (?, ?, ?)").bind(user.id, text, updatedAt),
     // Covers no album points at any more are dropped.
@@ -325,4 +333,39 @@ export async function getCover(env, user, hash) {
   if (!HASH.test(hash)) return null;
   const row = await (await authDb(env)).prepare("SELECT data FROM covers WHERE user_id = ? AND hash = ?").bind(user.id, hash).first();
   return row ? row.data : null;
+}
+
+/* ── Audio: one R2 object per song, capped per account ── */
+// R2 is free up to 10 GB across the whole bucket. AUDIO_TOTAL stays well under that, so nobody is ever billed for storage,
+// and once it's reached uploads simply stop (songs stay on the device) until space is freed.
+export const AUDIO_CAP = 1024 ** 3, AUDIO_TOTAL = 8 * 1024 ** 3, AUDIO_FILE_MAX = 200 * 1024 ** 2;
+const audioKey = (user, id) => `${user.id}/${id}`;
+
+/** Removes stored audio for songs no longer in the library (keep = Set of track ids), or all of it when keep is null. */
+async function dropAudio(env, user, keep) {
+  const db = await authDb(env);
+  const ids = (await db.prepare("SELECT track_id FROM audio WHERE user_id = ?").bind(user.id).all()).results.map((r) => r.track_id).filter((id) => !keep?.has(id));
+  for (let i = 0; i < ids.length; i += 100) {
+    const part = ids.slice(i, i + 100);
+    await env.AUDIO.delete(part.map((id) => audioKey(user, id)));
+    await db.batch(part.map((id) => db.prepare("DELETE FROM audio WHERE user_id = ? AND track_id = ?").bind(user.id, id)));
+  }
+}
+
+export async function putAudio(env, user, id, body, size) {
+  if (!ID.test(id) || !(size > 0) || size > AUDIO_FILE_MAX) throw { status: 400, error: "bad_audio" };
+  const db = await authDb(env);
+  const used = (await db.prepare("SELECT COALESCE(SUM(size), 0) AS n FROM audio WHERE user_id = ? AND track_id != ?").bind(user.id, id).first()).n;
+  if (used + size > AUDIO_CAP) throw { status: 413, error: "storage_full" };
+  const all = (await db.prepare("SELECT COALESCE(SUM(size), 0) AS n FROM audio WHERE NOT (user_id = ? AND track_id = ?)").bind(user.id, id).first()).n;
+  if (all + size > AUDIO_TOTAL) throw { status: 413, error: "storage_full" };
+  const obj = await env.AUDIO.put(audioKey(user, id), body);
+  // The declared length can't be trusted: record and enforce what R2 actually stored.
+  if (obj.size > AUDIO_FILE_MAX || used + obj.size > AUDIO_CAP) { await env.AUDIO.delete(audioKey(user, id)); throw { status: 413, error: "storage_full" }; }
+  await db.prepare("INSERT OR REPLACE INTO audio (user_id, track_id, size) VALUES (?, ?, ?)").bind(user.id, id, obj.size).run();
+}
+
+export async function getAudio(env, user, id, range) {
+  if (!ID.test(id)) return null;
+  return env.AUDIO.get(audioKey(user, id), range ? { range } : undefined);
 }

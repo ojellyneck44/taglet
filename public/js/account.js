@@ -1,5 +1,5 @@
 // Optional account, the same way Any Day Now does it: sign in with an emailed code, Apple, Google or GitHub, and the
-// library (albums, tags, order, covers) follows you to every device. Audio files stay on each device. Everything
+// library (albums, tags, order, covers) follows you to every device. Audio is stored in the account too. Everything
 // works without an account; signing in only adds syncing.
 
 let me = null, providers = { email: false, apple: false, google: false, github: false };
@@ -41,8 +41,18 @@ async function push() {
     }
     ls.set(COVERS_SENT, JSON.stringify([...sent].slice(-500)));
     await api("/api/account/library", { method: "PUT", body: lib });
+    // Then the audio, so every song plays on every device. The library goes first so the songs exist server-side.
+    for (const { id, file } of ui.pendingAudio()) {
+      const r = await fetch(`/api/account/audio/${id}`, { method: "PUT", credentials: "same-origin", body: file });
+      if (r.ok) ui.markCloud(id);
+      else {
+        if (r.status === 413 && !fullWarned) { fullWarned = true; ui.toast("Audio storage is full, so some songs stay on this device only.", "err"); }
+        break; // full or rate-limited: stop here and retry on the next sync rather than hammering the server
+      }
+    }
   } catch {}
 }
+let fullWarned = false;
 export function schedulePush() { if (!me) return; clearTimeout(pushTimer); pushTimer = setTimeout(push, 1500); }
 
 // Album by album, the newer copy wins; deletions carry a time too, so removing an album on one device sticks.
@@ -126,7 +136,7 @@ export function openSignIn() {
   const emailStep = () => {
     body.innerHTML = `
       <ul class="auth-benefits">
-        <li>${ui.icon("check")}Your albums, tags and covers on every phone and computer</li>
+        <li>${ui.icon("check")}Your albums, tags, covers and audio on every phone and computer</li>
         <li>${ui.icon("check")}Nothing lost when you clear your browser or switch phones</li>
         <li>${ui.icon("check")}Free, with no password to remember</li>
       </ul>
@@ -138,7 +148,7 @@ export function openSignIn() {
         <button class="btn primary big" type="submit">Email me a sign-in code</button>
       </form>` : ""}
       ${!oauth.length && !providers.email ? `<p class="hint-lg">Sign-in isn’t switched on yet. Taglet works fully without it, and your albums stay saved on this device.</p>` : ""}
-      <p class="hint">Optional. Audio files stay on each device; the account keeps the tagging work.</p>`;
+      <p class="hint">Optional. Your songs and tagging work are kept in the account so they play on every device.</p>`;
     const form = body.querySelector("form");
     if (!form) return;
     form.addEventListener("submit", async (e) => {
@@ -179,7 +189,7 @@ export function openAccount() {
   const via = [me.apple && "Apple", me.google && "Google", me.github && "GitHub"].filter(Boolean).join(", ");
   const dlg = sheet("account", "Your account", `
     <p class="hint-lg">Signed in as <strong>${esc(me.email || me.name || "you")}</strong>${via ? ` · ${esc(via)}` : ""}</p>
-    <p class="hint">Your albums, tags, track order and covers sync to this account. Audio files stay on each device: on a new device, add the files and Taglet matches them to your tracks by name.</p>
+    <p class="hint">Your albums, tags, track order, covers and audio sync to this account. Your audio is stored in your account too (up to 1 GB), so every song plays on every device.</p>
     <div class="sheet-actions" style="justify-content:flex-start"><button class="btn ghost" type="button" data-signout>Sign out</button></div>
     <details class="danger-zone"><summary>Delete account</summary>
       <p class="hint">Deletes your account and its synced library from Taglet’s servers. Everything saved on this device stays.</p>

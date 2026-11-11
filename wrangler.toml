@@ -43,7 +43,12 @@ new_sqlite_classes = ["Quota"]
 binding = "SHARES"
 id = "c5f53ef5266443ed9a7077a650e73892"
 
-# Accounts: users, sessions and each person's synced library (no audio).
+# Signed-in users' audio, so a song plays on every device (1 GB per account, 8 GB in all, so R2's free 10 GB is never exceeded).
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "taglet-audio"
+
+# Accounts: users, sessions and each person's synced library.
 # Sign-in options turn on when their secrets are set (npx wrangler secret put NAME):
 #   RESEND_API_KEY (+ optional EMAIL_FROM) for email codes; GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET;
 #   GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET; APPLE_CLIENT_ID + APPLE_TEAM_ID + APPLE_KEY_ID + APPLE_PRIVATE_KEY.

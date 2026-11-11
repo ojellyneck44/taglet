@@ -153,6 +153,7 @@ async function share(req, env, url) {
 //   POST /api/auth/logout, /api/auth/delete
 //   GET/PUT /api/account/library                   the synced library (albums, tags, order, cover references)
 //   GET/PUT /api/account/cover/:sha256             cover images, stored once each
+//   GET/PUT /api/account/audio/:trackId            the song's audio in R2 (1 GB per account, 8 GB in all, 200 MB per file)
 async function account(req, env, url) {
   const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...extra } });
   const withCookie = (res, c) => { res.headers.append("set-cookie", c); return res; };
@@ -187,6 +188,25 @@ async function account(req, env, url) {
         const origin = req.headers.get("origin");
         if (origin && origin !== url.origin) return json({ error: "forbidden" }, 403);
         await auth.putCover(env, user, cover, await req.arrayBuffer());
+        return new Response(null, { status: 204 });
+      }
+    }
+    const audio = route.match(/^account\/audio\/([a-z0-9]{6,16})$/)?.[1];
+    if (audio) {
+      const user = await auth.currentUser(env, req);
+      if (!user) return json({ error: "signed_out" }, 401);
+      // R2's free tier is 10 GB, 1M writes and 10M reads a month. These daily limits keep every month under it.
+      if (!(await take(env, `audio-${method}:${user.id}`, 1, method === "PUT" ? 300 : 1000)) || !(await take(env, `audio-${method}`, 1, method === "PUT" ? 10000 : 100000)))
+        return json({ error: "rate_limited" }, 429);
+      if (method === "GET") {
+        const obj = await auth.getAudio(env, user, audio);
+        return obj ? new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Content-Length": String(obj.size), "Cache-Control": "private, no-store" } }) : new Response(null, { status: 404 });
+      }
+      if (method === "PUT") {
+        const origin = req.headers.get("origin");
+        if (origin && origin !== url.origin) return json({ error: "forbidden" }, 403);
+        const size = +req.headers.get("content-length");
+        await auth.putAudio(env, user, audio, req.body, size);
         return new Response(null, { status: 204 });
       }
     }

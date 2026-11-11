@@ -28,7 +28,7 @@
 
   <h2>What happens on your device</h2>
   <p>When you add a song, your browser reads it straight from your disk. Taglet uses ffmpeg, compiled to WebAssembly, to read tags and convert audio. The first time you add a file, your browser downloads that engine (about 10 MB compressed) from taglet.net and keeps it, so it works offline afterwards. Cover art is cropped on a canvas in the page. Finished files are handed back to you as a download or through your device’s share sheet.</p>
-  <p>None of this sends your audio, art, titles or file names anywhere. You can check: open your browser’s network tools while you convert, and you’ll see no uploads.</p>
+  <p>Unless you sign in (below), none of this sends your audio, art, titles or file names anywhere. You can check: open your browser’s network tools while you convert, and you’ll see no uploads.</p>
 
   <h2>Linking a device</h2>
   <p>Link a device is the one feature that moves files over the internet, and only when you send something. The pairing code is turned into an encryption key on each device. Files are encrypted with AES-GCM before they leave, pass through a small relay on Cloudflare, and are decrypted on the other device. The relay sees only a scrambled room name and encrypted bytes. It can’t read them and stores nothing. The code is part of the QR link after the <strong>#</strong>, which browsers never send to a server.</p>
@@ -40,7 +40,7 @@
   <p>When you share an album or single, Taglet converts the songs on your device, encrypts them with a new random key, and only then uploads them. The key is part of the link after the <strong>#</strong>, so it never reaches the server. Taglet stores the scrambled files for 30 days and can’t open them. The one exception is the link preview: the cover, the album or song name and the artist are stored readable, so messaging apps can show them when the link is sent. Anyone you give the link to can play and download the songs. Stop sharing, or deleting the album, removes them straight away.</p>
 
   <h2>Accounts (optional)</h2>
-  <p>You can sign in with an emailed code, Apple, Google or GitHub, so your library follows you between devices. The account stores your email (or the ID the provider gives Taglet), your albums’ tags, track order and covers, and a sign-in session cookie. It never stores your audio. On a new device you add the files, and Taglet matches them to your tracks. Signing out leaves everything on the device. Deleting the account removes it and its library from Taglet’s servers straight away.</p>
+  <p>You can sign in with an emailed code, Apple, Google or GitHub, so your library follows you between devices. The account stores your email (or the ID the provider gives Taglet), your albums’ tags, track order and covers, and a sign-in session cookie. It also stores your songs’ audio files (up to 1 GB per account) in Cloudflare R2, so they play on every device you sign in on; they are removed when you remove the song or delete the account. Audio is only uploaded while you are signed in. Signing out leaves everything on the device. Deleting the account removes it and its library from Taglet’s servers straight away.</p>
 
   <h2>What we don’t do</h2>
   <ul>

@@ -246,7 +246,7 @@ async function importAudio(audio, source, opts) {
 let retryFiles = null;
 
 function newTrack(file, info) {
-  const t = { id: uid(), fileId: uid(), file, fileName: file.name, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
+  const t = { id: uid(), fileId: uid(), file, fileName: file.name, cloud: false, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
   tracks.set(t.id, t);
   return t;
 }
@@ -262,7 +262,7 @@ function findBuild(file, info, skip) {
 
 /** Swap in new audio, keep every tag, the cover and the album position. Returns what's needed to undo. */
 function replaceAudio(t, file, info, newBuild = true) {
-  const prev = { file: t.file, fileId: t.fileId, fileName: t.fileName, codec: t.codec, sampleRate: t.sampleRate, duration: t.duration, build: t.build };
+  const prev = { cloud: t.cloud, file: t.file, fileId: t.fileId, fileName: t.fileName, codec: t.codec, sampleRate: t.sampleRate, duration: t.duration, build: t.build };
   Object.assign(t, { file, fileId: uid(), fileName: file.name, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, build: newBuild ? (t.build || 1) + 1 : t.build });
   const a = albums.get(t.albumId);
   if (!a.art && info.art) setArt(a, info.art);
@@ -475,7 +475,7 @@ function renderTracks(a) {
       <button class="grip" type="button" aria-label="Move ${esc(t.tags.title)}. Use arrow keys.">${icon("grip")}</button>
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
       <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}${t.build ? `<span class="build-tag">build ${t.build}</span>` : ""}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
-      <span class="dur">${t.file ? fmtTime(t.duration) : `<span class="no-audio" title="Synced from another device. Add the file here to play or export it.">No audio here</span>`}</span>
+      <span class="dur">${t.file || t.cloud ? fmtTime(t.duration) : `<span class="no-audio" title="Not uploaded yet. Add the file here to play or export it.">No audio here</span>`}</span>
     </li>`;
   }).join("");
 }
@@ -506,8 +506,8 @@ function renderInspector() {
     if (document.activeElement !== input) input.value = t.tags[input.dataset.track] || "";
   }
   fitAll();
-  $("#inspFile").textContent = t.file ? `${t.file.name}${t.build ? ` · build ${t.build}` : ""}` : "No audio here";
-  $('[data-act="replaceAudio"] span').textContent = t.file ? "New build" : "Add audio";
+  $("#inspFile").textContent = t.file ? `${t.file.name}${t.build ? ` · build ${t.build}` : ""}` : t.cloud ? `${t.fileName} · in your account` : "No audio here";
+  $('[data-act="replaceAudio"] span').textContent = t.file || t.cloud ? "New build" : "Add audio";
   $("#inspFile").title = `${t.codec.toUpperCase()} · ${(t.sampleRate / 1000).toFixed(1)} kHz`;
   renderArtists(t);
   const others = ["composer", "bpm", "isrc", "publisher", "copyright", "comment", "lyrics"].filter((k) => String(t.tags[k] || "").trim());
@@ -667,7 +667,7 @@ const actions = {
   preview: async () => {
     const p = $("#player"), t = tracks.get(current.track);
     if (!p.paused) { p.pause(); return; }
-    if (!t.file) { toast("This song’s audio is on another device. Add the file here to play it.", "err"); return; }
+    if (!(await ensureFile(t))) { toast("This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }
     if (!p.src) p.src = URL.createObjectURL(t.file);
     try { await p.play(); } catch { toast(`This browser can’t play ${(t.file.name.match(/\.(\w+)$/)?.[1] || t.codec).toUpperCase()} files directly. It still converts fine.`); }
   },
@@ -1120,7 +1120,8 @@ async function runExport(mode) {
     const row = $(`[data-x="${t.id}"]`, ol);
     const a = albums.get(t.albumId);
     const tags = tagsFor(t);
-    if (!t.file) { failed++; row.classList.add("err"); $(".muted", row).textContent = "Audio is on another device"; continue; }
+    $(".muted", row).textContent = "Fetching audio";
+    if (!(await ensureFile(t))) { failed++; row.classList.add("err"); $(".muted", row).textContent = "No audio for this song yet"; continue; }
     $(".muted", row).textContent = t.codec === "mp3" && !opts.trimSilence ? "Re-tagging" : "Converting";
     try {
       const res = await render(t, tags, a.art?.bytes ? { bytes: a.art.bytes, mime: "image/jpeg" } : null, opts, (p) => row.style.setProperty("--p", p));
@@ -1259,7 +1260,8 @@ function showShareState(a) {
 async function publishShare(a) {
   if (!a) return;
   const list = a.trackIds.map((id) => tracks.get(id));
-  if (list.some((t) => !t.file)) { toast("Some of these songs’ audio is on another device. Add the files here first, then share.", "err"); return; }
+  for (const t of list) await ensureFile(t);
+  if (list.some((t) => !t.file)) { toast("Some of these songs have no audio yet. Add the files here first, then share.", "err"); return; }
   const ol = $("#shareProgress");
   $("#shareStart").hidden = true; $("#shareReady").hidden = true; ol.hidden = false;
   ol.innerHTML = list.map((t) => `<li class="xfer" data-x="${t.id}"><span>${esc(t.tags.title)}</span><span class="muted">Waiting</span><span class="bar"><i></i></span></li>`).join("");
@@ -1515,7 +1517,7 @@ let saveTimer = 0, restored = false;
 let deleted = {}; // album id -> when it was deleted, so a deletion on one device reaches the others
 /** Everything about an album that syncs; when it changes, the album's change time moves on. */
 const albumSig = (a) => JSON.stringify([a.title, a.albumArtist, a.year, a.genre, !!a.compilation, a.art?.hash || null, a.trackIds,
-  a.trackIds.map((id) => { const t = tracks.get(id); return t && [t.tags, t.build || 0, t.file?.name || t.fileName]; })]);
+  a.trackIds.map((id) => { const t = tracks.get(id); return t && [t.tags, t.build || 0, t.file?.name || t.fileName, !!t.cloud]; })]);
 function save() { if (!restored) return; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
 async function saveNow() {
   for (const a of albums.values()) { const sig = albumSig(a); if (a.sig !== sig) { a.sig = sig; a.updatedAt = Date.now(); } }
@@ -1562,6 +1564,20 @@ async function restore() {
 }
 // ---------------------------------------------------------------- account sync
 
+/** The song's audio as a File: already here, or downloaded once from the account and kept on this device. */
+async function ensureFile(t) {
+  if (t.file) return t.file;
+  if (!t.cloud) return null;
+  try {
+    const r = await fetch(`/api/account/audio/${t.id}`, { credentials: "same-origin" });
+    if (!r.ok) return null;
+    const name = t.fileName || `${t.tags.title || "song"}.${t.codec || "mp3"}`;
+    t.file = new File([await r.blob()], name);
+    save();
+    return t.file;
+  } catch { return null; }
+}
+
 function getLibrary() {
   return {
     albums: [...albums.values()].map((a) => ({ id: a.id, title: a.title, albumArtist: a.albumArtist, year: a.year, genre: a.genre, compilation: !!a.compilation,
@@ -1586,8 +1602,8 @@ async function applyLibrary(remote, covers) {
     if (L && (L.updatedAt || 0) >= R.updatedAt) continue;
     for (const rt of (remote.tracks || []).filter((t) => t.albumId === R.id)) {
       const lt = tracks.get(rt.id);
-      if (lt) Object.assign(lt, { tags: rt.tags, build: rt.build, albumId: R.id }, lt.file ? {} : { fileName: rt.fileName, codec: rt.codec, sampleRate: rt.sampleRate, duration: rt.duration });
-      else tracks.set(rt.id, { ...rt, fileId: uid(), file: null }); // tags only, until the audio is added here
+      if (lt) Object.assign(lt, { tags: rt.tags, build: rt.build, albumId: R.id }, lt.file ? {} : { cloud: !!rt.audio, fileName: rt.fileName, codec: rt.codec, sampleRate: rt.sampleRate, duration: rt.duration });
+      else tracks.set(rt.id, { ...rt, cloud: !!rt.audio, fileId: uid(), file: null }); // tags only, until the audio is added here
     }
     if (L) for (const tid of L.trackIds) if (!R.trackIds.includes(tid)) tracks.delete(tid);
     const a = L || { id: R.id, art: null };
@@ -1626,7 +1642,9 @@ restore().finally(() => {
   restored = true;
   loaded.then(() => setTimeout(hideSplash, 150));
   navigator.storage?.persist?.().catch(() => {});
-  initAccount({ openSheet, toast, icon, getLibrary, applyLibrary, coverBlob: (id) => albums.get(id)?.art?.blob || null });
+  initAccount({ openSheet, toast, icon, getLibrary, applyLibrary,
+    pendingAudio: () => [...tracks.values()].filter((t) => t.file && !t.cloud).map((t) => ({ id: t.id, file: t.file })),
+    markCloud: (id) => { const t = tracks.get(id); if (t) { t.cloud = true; save(); } }, coverBlob: (id) => albums.get(id)?.art?.blob || null });
 });
 
 {
