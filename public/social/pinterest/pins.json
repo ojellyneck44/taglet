@@ -1,0 +1,50 @@
+[
+ {
+  "slug": "flac-to-mp3",
+  "file": "flac-to-mp3.png",
+  "link": "https://taglet.net/guides/flac-to-mp3/?ref=pinterest",
+  "title": "Convert FLAC to MP3 and keep your tags",
+  "description": "How to convert FLAC to MP3 without losing tags or cover art, free and private, in your browser. taglet.net",
+  "alt": "Taglet pin: Convert FLAC to MP3 and keep your tags"
+ },
+ {
+  "slug": "wav-to-mp3",
+  "file": "wav-to-mp3.png",
+  "link": "https://taglet.net/guides/wav-to-mp3/?ref=pinterest",
+  "title": "WAV to MP3, with titles and cover art",
+  "description": "Convert big WAV files to MP3 and add the title, artist, album and cover art that WAV can't store. taglet.net",
+  "alt": "Taglet pin: WAV to MP3, with titles and cover art"
+ },
+ {
+  "slug": "fix-mp3-tags",
+  "file": "fix-mp3-tags.png",
+  "link": "https://taglet.net/guides/fix-mp3-tags/?ref=pinterest",
+  "title": "Fix wrong MP3 tags in minutes",
+  "description": "Fix wrong or missing MP3 tags: album split in two, songs out of order, no artist, no cover. taglet.net",
+  "alt": "Taglet pin: Fix wrong MP3 tags in minutes"
+ },
+ {
+  "slug": "add-cover-art",
+  "file": "add-cover-art.png",
+  "link": "https://taglet.net/guides/add-cover-art/?ref=pinterest",
+  "title": "Add album art to your MP3s",
+  "description": "Embed square album cover art in MP3 files so it shows in Spotify Local Files and every music player. taglet.net",
+  "alt": "Taglet pin: Add album art to your MP3s"
+ },
+ {
+  "slug": "spotify-local-files",
+  "file": "spotify-local-files.png",
+  "link": "https://taglet.net/spotify/?ref=pinterest",
+  "title": "Play your own music files in Spotify",
+  "description": "How to get your own MP3s into Spotify with Local Files on Mac, PC, iPhone and Android. taglet.net",
+  "alt": "Taglet pin: Play your own music files in Spotify"
+ },
+ {
+  "slug": "tag-and-convert",
+  "file": "tag-and-convert.png",
+  "link": "https://taglet.net/?ref=pinterest",
+  "title": "Tag and convert your music, free",
+  "description": "Taglet fixes titles, artists and cover art on your own music files and exports MP3s for Spotify Local Files. Free, private, in your browser. taglet.net",
+  "alt": "Taglet pin: Tag and convert your music, free"
+ }
+]
