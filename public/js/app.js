@@ -817,13 +817,13 @@ async function linkApi(path) {
   throw new Error(msg || "Couldn’t get that link. Check you’re online and try again.");
 }
 
-/** A square JPEG of a thumbnail (YouTube's are 16:9), or null. */
+/** A thumbnail as { raw, blob }: the picture as the site has it, and a centred square JPEG of it. Or null. */
 async function linkCover(u) {
   if (!u) return null;
   try {
     const r = await linkApi(`/api/fetch/thumb?url=${encodeURIComponent(u)}`);
-    const img = await loadImage(await r.blob());
-    return await squareJpeg(img, centerCrop(img));
+    const raw = await r.blob(), img = await loadImage(raw);
+    return { raw, blob: await squareJpeg(img, centerCrop(img)) };
   } catch { return null; }
 }
 
@@ -855,13 +855,16 @@ async function importLink(raw, into) {
     if (!list.length) throw new Error("There are no songs at that link.");
     const shared = pl ? await linkCover(pl.thumbnail) : null; // a playlist or set gets one cover
     const files = [], hints = new Map(), failed = [];
+    let first = null;
     for (const [i, e] of list.entries()) {
       status(`Getting ${list.length > 1 ? `${i + 1} of ${list.length}: ` : ""}${e.title || "the song"}`, i, list.length);
       try {
         const r = await linkApi(`/api/fetch/audio?url=${encodeURIComponent(e.url)}`);
         const m = JSON.parse(decodeURIComponent(r.headers.get("X-Taglet-Meta") || "%7B%7D"));
         const f = new File([await r.blob()], `${safeName(m.title || e.title || "Song")}.${m.ext || "m4a"}`, { type: r.headers.get("Content-Type") || "" });
-        hints.set(f, linkTags(m, pl, i, list.length, shared || await linkCover(m.thumbnail)));
+        const cover = shared || await linkCover(m.thumbnail);
+        first ||= cover;
+        hints.set(f, linkTags(m, pl, i, list.length, cover?.blob));
         files.push(f);
       } catch (err) {
         failed.push(e.title || "A song");
@@ -871,7 +874,12 @@ async function importLink(raw, into) {
     engine.hidden = true;
     if (failed.length) toast(`${failed.length === list.length ? "None of the songs" : `${failed.length} of ${list.length} songs`} could be brought in${failed.length < 3 ? ` (${failed.join(", ")})` : ""}.`, "err");
     if (!files.length) return false;
-    await addFiles(files, ` from ${/soundcloud/i.test(url) ? "SoundCloud" : "YouTube"}`, { into, hints });
+    const youtube = !/soundcloud/i.test(url), hadArt = !!albums.get(into)?.art;
+    await addFiles(files, ` from ${youtube ? "YouTube" : "SoundCloud"}`, { into, hints });
+    // YouTube thumbnails are wide, so the cover starts as the middle square; open the crop straight away to choose it.
+    const a = albums.get([...tracks.values()].find((t) => t.file === files[0])?.albumId);
+    const crop = shared || (list.length === 1 ? first : null);
+    if (youtube && crop && a?.art && !hadArt) openCrop(crop.raw, a);
     return true;
   } catch (err) {
     engine.hidden = true;
