@@ -531,3 +531,15 @@ body[data-single] [data-act="remove"] { display: none; } /* "Delete track" under
 }
 
 .sheet:focus, .sheet:focus-visible { outline: none; }
+
+/* Cover picker: covers found in an import */
+.cover-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(132px, 40%), 1fr)); gap: var(--s3); margin: var(--s4) 0; }
+.cover-picks .pick { position: relative; display: grid; gap: 6px; cursor: pointer; font-size: var(--t-xs); color: var(--paper-3); min-width: 0; }
+.cover-picks input { position: absolute; opacity: 0; inset: 0; margin: 0; }
+.cover-picks img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; outline: 2px solid transparent; outline-offset: 3px; transition: outline-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+.cover-picks .pick:active img { transform: scale(.97); }
+.cover-picks input:checked + img { outline-color: var(--accent); }
+.cover-picks input:focus-visible + img { outline-color: var(--paper); }
+.cover-picks input:checked ~ span { color: var(--paper); }
+.cover-picks span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cover-picks:has(.pick:only-child) { grid-template-columns: minmax(0, 180px); }

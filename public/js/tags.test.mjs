@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readId3, mp3Info, buildKey, buildId3, mp3AudioRange, parseFfmetadata, splitArtists, splitNumber, zipParts, crc32, joinArtists } from "./tags.js";
+import { readId3, mp3Info, buildKey, buildId3, mp3AudioRange, parseFfmetadata, splitArtists, splitNumber, zipParts, crc32, joinArtists, fillBatch } from "./tags.js";
 
 assert.equal(joinArtists(["X", " Y ", "", "Z"]), "X, Y, Z");
 assert.deepEqual(splitArtists("A, B feat. C; D"), ["A", "B", "C", "D"]);
@@ -15,6 +15,19 @@ for (const [a, b] of [["Night Drive v2.wav", "night drive.mp3"], ["night_drive_F
   assert.equal(buildKey(a), buildKey(b), `${a} vs ${b}`);
 assert.notEqual(buildKey("Night Drive.wav"), buildKey("Day Drive.wav"));
 assert.notEqual(buildKey("Song 2.wav"), buildKey("Song.wav")); // a bare number is part of the title
+// Batch fill: blanks come from the richest song; titles and numbers never do; a second album stays apart.
+{
+  const T = (o) => ({ title: "", artists: [], album: "", albumArtist: "", year: "", genre: "", composer: "", track: 0, trackTotal: 0, compilation: false, ...o });
+  const rich = T({ title: "a", artists: ["X", "Y"], album: "LP", albumArtist: "X", year: "2026", genre: "Pop", track: 1, trackTotal: 3 });
+  const bare = T({ title: "b" }), half = T({ title: "c", artists: ["Z"], genre: "Rock", track: 3 });
+  const other = T({ title: "d", album: "EP" });
+  fillBatch([bare, rich, half]);
+  assert.deepEqual([bare.title, bare.album, bare.artists, bare.genre, bare.track], ["b", "LP", ["X", "Y"], "Pop", 0]);
+  assert.deepEqual([half.artists, half.genre, half.album, half.track], [["Z"], "Rock", "LP", 3]);
+  const lone = T({ title: "e" });
+  fillBatch([lone, T({ title: "f", album: "LP", genre: "Pop" }), other]);
+  assert.equal(lone.album, ""); assert.equal(other.genre, ""); // two albums: untagged files aren't guessed into one
+}
 assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
 
 const meta = parseFfmetadata(";FFMETADATA1\ntitle=Hello\\=World\nARTIST=A\\;B\nlyrics=line1\\\nline2\n[STREAM]\ntitle=nope\n");

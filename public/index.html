@@ -234,6 +234,19 @@
   </div>
 </dialog>
 
+<!-- Cover art found in the imported files -->
+<dialog class="sheet glass" id="coverDialog" aria-labelledby="coverTitle">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h2 id="coverTitle">Pick one cover</h2><button class="btn ghost icon-only" type="button" data-close aria-label="Close"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <p class="hint-lg" id="coverText"></p>
+    <div class="cover-picks" id="coverPicks" role="radiogroup" aria-labelledby="coverTitle"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" type="button" data-cover="skip" id="coverSkip">No cover</button>
+      <button class="btn primary" type="button" data-cover="use" id="coverGo">Keep this cover</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- New builds: updated audio for songs that are already tagged -->
 <dialog class="sheet glass" id="buildsDialog" aria-labelledby="buildsTitle">
   <div class="sheet-inner">

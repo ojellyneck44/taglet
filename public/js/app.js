@@ -1,5 +1,5 @@
 import { loadEngine, probe, render } from "./engine.js";
-import { buildKey, joinArtists, safeName, zipParts } from "./tags.js";
+import { buildKey, fillBatch, joinArtists, safeName, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
 import { b64url, unb64url, newKeyBytes, importKey, seal, shareUrl } from "./sharekit.js";
 import { initAccount, onAccountChange, openAccount, schedulePush, syncCardHidden, hideSyncCard, accountAvailable } from "./account.js";
@@ -167,33 +167,33 @@ async function importAudio(audio, source, opts) {
     return;
   }
   const touched = new Set();
-  const batch = { loose: null }; // untagged files dropped together become one album
+  // loose: untagged files dropped together become one album. covers: album id -> embedded covers, settled at the end.
+  const batch = { loose: null, covers: new Map(), manual: new Set() };
   const builds = [], addedNow = new Set(), attached = [];
   let n = 0;
   const failed = []; // [file name, reason], reported together at the end
+  const read = [];
   audio.sort((a, b) => collator.compare(a.name, b.name));
   for (const file of audio) {
     n++;
     engine.innerHTML = `<span>Reading ${n} of ${audio.length}: ${esc(file.name)}</span><progress max="${audio.length}" value="${n - 1}"></progress>`;
-    try {
-      const info = await probe(file);
-      // An updated render of a song that's already tagged: hold it back and ask before replacing anything.
-      const target = opts.target ? tracks.get(opts.target) : findBuild(file, info, addedNow);
-      // A song synced from another device, waiting for its audio: attach it straight away, nothing to confirm.
-      if (target && !target.file) { replaceAudio(target, file, info, false); attached.push(target); touched.add(target.albumId); continue; }
-      if (target) { builds.push({ file, info, target: target.id }); continue; }
-      const t = newTrack(file, info);
-      addedNow.add(t.id);
-      const album = placeTrack(t, info, batch, opts.into);
-      touched.add(album.id);
-      if (!current.album) current.album = album.id;
-      renderShelf();
-      if (current.album === album.id) renderAlbum();
-    } catch (err) {
-      failed.push([file.name, readReason(err)]);
-    }
+    try { read.push({ file, info: await probe(file) }); } catch (err) { failed.push([file.name, readReason(err)]); }
   }
   engine.hidden = true;
+  fillBatch(read.map((r) => r.info.tags)); // blanks come from the song with the most tags
+  for (const { file, info } of read) {
+    // An updated render of a song that's already tagged: hold it back and ask before replacing anything.
+    const target = opts.target ? tracks.get(opts.target) : findBuild(file, info, addedNow);
+    // A song synced from another device, waiting for its audio: attach it straight away, nothing to confirm.
+    if (target && !target.file) { replaceAudio(target, file, info, false); attached.push(target); touched.add(target.albumId); continue; }
+    if (target) { builds.push({ file, info, target: target.id }); continue; }
+    const t = newTrack(file, info);
+    addedNow.add(t.id);
+    const album = placeTrack(t, info, batch, opts.into);
+    touched.add(album.id);
+    if (!current.album) current.album = album.id;
+  }
+  renderAll();
   if (failed.length) reportFailed(failed, audio.length);
   let replaced = [];
   if (builds.length) {
@@ -206,6 +206,7 @@ async function importAudio(audio, source, opts) {
       touched.add(t.albumId);
     }
   }
+  await settleCovers(batch.covers);
   // A lone untagged song is a single: name the album after it.
   if (batch.loose?.trackIds.length === 1 && !batch.loose.title) batch.loose.title = tracks.get(batch.loose.trackIds[0]).tags.title;
   for (const id of touched) tidyAlbum(albums.get(id));
@@ -305,14 +306,63 @@ function placeTrack(t, info, batch, into) {
     album = { id: uid(), title, albumArtist: artist, year: info.tags.year, genre: info.tags.genre, compilation: info.tags.compilation, art: null, trackIds: [] };
     albums.set(album.id, album);
     if (!title) batch.loose = album;
-    if (pendingArt) { const f = pendingArt; pendingArt = null; setArtFromFile(f, album); }
+    if (pendingArt) { const f = pendingArt; pendingArt = null; batch.manual.add(album.id); setArtFromFile(f, album); }
   }
   if (!album.year && info.tags.year) album.year = info.tags.year;
   if (!album.genre && info.tags.genre) album.genre = info.tags.genre;
-  if (!album.art && info.art) setArt(album, info.art);
+  if (info.art && !album.art && !batch.manual.has(album.id)) {
+    if (!batch.covers.has(album.id)) batch.covers.set(album.id, []);
+    batch.covers.get(album.id).push({ blob: info.art, title: t.tags.title });
+  }
   t.albumId = album.id;
   album.trackIds.push(t.id);
   return album;
+}
+
+/** An album has one cover. One embedded cover for some of the songs: ask before giving it to all of them.
+ *  Several different ones: ask which to keep. Every song carrying the same one: just use it. */
+async function settleCovers(byAlbum) {
+  for (const [id, list] of byAlbum) {
+    const a = albums.get(id);
+    if (!a || a.art) continue;
+    const seen = new Map();
+    for (const c of list) {
+      const h = new Uint8Array(await crypto.subtle.digest("SHA-256", await c.blob.arrayBuffer())).join();
+      if (seen.has(h)) seen.get(h).count++; else seen.set(h, { ...c, count: 1 });
+    }
+    const covers = [...seen.values()].sort((x, y) => y.count - x.count);
+    const pick = covers.length > 1 || list.length < a.trackIds.length ? await askCover(a, covers) : covers[0];
+    if (pick) setArt(a, pick.blob);
+  }
+  renderAll();
+}
+
+function askCover(a, covers) {
+  return new Promise((resolve) => {
+    const d = $("#coverDialog"), box = $("#coverPicks"), one = covers.length === 1;
+    const name = a.title ? `“${esc(a.title)}”` : "this album";
+    $("#coverTitle").textContent = one ? "Use this cover for every song?" : "Pick one cover";
+    $("#coverText").innerHTML = one
+      ? `Only “${esc(covers[0].title)}” came with cover art. Spotify shows one picture for a whole album, so it can go on all ${a.trackIds.length} songs on ${name}.`
+      : `These songs came with ${covers.length} different covers. An album shows one, so pick the one to keep for ${name}.`;
+    const urls = covers.map((c) => URL.createObjectURL(c.blob));
+    box.innerHTML = covers.map((c, i) => `<label class="pick">
+      <input type="radio" name="coverPick" value="${i}" ${i ? "" : "checked"} ${one ? "hidden" : ""}><img src="${urls[i]}" alt="">
+      <span>${esc(c.title)}${c.count > 1 ? ` and ${c.count - 1} more` : ""}</span></label>`).join("");
+    $("#coverSkip").textContent = one ? "Not now" : "No cover";
+    $("#coverGo").textContent = one ? "Use for all" : "Keep this cover";
+    // Closing with ✕ keeps what the files brought: the single cover is left off, several fall back to the most used.
+    let result = one ? null : covers[0];
+    const onClick = (e) => {
+      const b = e.target.closest("[data-cover]");
+      if (!b) return;
+      result = b.dataset.cover === "use" ? covers[+($("input:checked", box)?.value || 0)] : null;
+      d.close();
+    };
+    d.addEventListener("click", onClick);
+    d.addEventListener("close", () => { d.removeEventListener("click", onClick); urls.forEach((u) => URL.revokeObjectURL(u)); resolve(result); }, { once: true });
+    openSheet(d);
+  });
 }
 
 /** After an import: sort by disc/track, number untagged tracks in filename order, and guess a missing album artist. */

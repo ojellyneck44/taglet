@@ -104,6 +104,29 @@ export function parseFfmetadata(text) {
   return out;
 }
 
+const SHARED = ["artists", "album", "albumArtist", "year", "genre", "composer", "publisher", "copyright", "trackTotal", "discTotal", "compilation"];
+const hasValue = (v) => (Array.isArray(v) ? v.length > 0 : !!v);
+
+/** Songs imported together share what one of them knows: within each album (files with no album tag join
+ *  the batch's album when there is exactly one), empty fields are filled from the song with the most tags.
+ *  Titles, numbers, lyrics and other per-song fields are never copied. Mutates the tags objects. */
+export function fillBatch(list) {
+  const albumOf = (t) => (t.album || "").trim().toLowerCase();
+  const named = new Set(list.map(albumOf).filter(Boolean));
+  const groups = new Map();
+  for (const t of list) {
+    const k = albumOf(t) || (named.size === 1 ? [...named][0] : "");
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(t);
+  }
+  const score = (t) => Object.entries(t).filter(([k, v]) => k !== "title" && hasValue(v)).length;
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const best = g.reduce((a, b) => (score(b) > score(a) ? b : a));
+    for (const t of g) for (const k of SHARED) if (!hasValue(t[k]) && hasValue(best[k])) t[k] = Array.isArray(best[k]) ? [...best[k]] : best[k];
+  }
+}
+
 /** "3/12" -> [3, 12]; "03" -> [3, 0] */
 export function splitNumber(v) {
   const [a, b] = String(v || "").split("/");

@@ -117,8 +117,9 @@ export async function probe(file) {
         const a = await tryRead("/art.jpg");
         if (a?.length) art = new Blob([a], { type: "image/jpeg" });
       }
-      const [track, trackTotal] = splitNumber(m.track);
-      const [disc, discTotal] = splitNumber(m.disc);
+      // FLAC/Ogg write totals and some fields under their own names.
+      const [track, trackTotal] = splitNumber(m.track || m.tracknumber);
+      const [disc, discTotal] = splitNumber(m.disc || m.discnumber);
       return {
         codec: audio[1],
         sampleRate: +audio[2],
@@ -126,15 +127,16 @@ export async function probe(file) {
         art,
         tags: {
           title: m.title || file.name.replace(/\.[^.]+$/, ""),
-          artists: splitArtists(m.artist),
+          artists: splitArtists(m.artist || m.artists),
           album: m.album || "",
-          albumArtist: m.album_artist || m["album artist"] || "",
-          track, trackTotal, disc, discTotal,
+          albumArtist: m.album_artist || m["album artist"] || m.albumartist || "",
+          track, trackTotal: trackTotal || parseInt(m.tracktotal || m.totaltracks, 10) || 0,
+          disc, discTotal: discTotal || parseInt(m.disctotal || m.totaldiscs, 10) || 0,
           year: (m.date || m.year || "").slice(0, 4),
           genre: m.genre || "", composer: m.composer || "", comment: m.comment || "",
-          lyrics: m.lyrics || Object.entries(m).find(([k]) => k.startsWith("lyrics"))?.[1] || "",
-          bpm: m.tbpm || m.bpm || "", isrc: m.tsrc || m.isrc || "", copyright: m.copyright || "",
-          publisher: m.publisher || m.label || "", compilation: m.compilation === "1",
+          lyrics: m.lyrics || m.unsyncedlyrics || Object.entries(m).find(([k]) => k.startsWith("lyrics"))?.[1] || "",
+          bpm: m.tbpm || m.bpm || m.tmpo || "", isrc: m.tsrc || m.isrc || "", copyright: m.copyright || "",
+          publisher: m.publisher || m.label || m.organization || "", compilation: m.compilation === "1" || m.cpil === "1",
         },
       };
     });
