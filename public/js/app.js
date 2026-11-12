@@ -808,7 +808,7 @@ const setPlayButton = (playing) => {
   });
 };
 let playRaf = 0;
-const SCRUB_START = 104;
+const SCRUB_START = 34;
 const SCRUB_RIGHT = 8;
 function positionScrubHit(row, ratio) {
   const scrub = $(".track-scrub-hit", row);
@@ -816,6 +816,8 @@ function positionScrubHit(row, ratio) {
   const lineWidth = Math.max(1, row.clientWidth - SCRUB_START - SCRUB_RIGHT);
   scrub.style.left = `${SCRUB_START}px`;
   scrub.style.width = `${lineWidth}px`;
+  scrub.style.top = "0px";
+  scrub.style.height = `${row.clientHeight}px`;
 }
 function tickPlay() {
   const row = $(`.track[data-track-id="${player.dataset.track}"]`);
