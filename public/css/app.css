@@ -186,7 +186,7 @@ body.dragging:not([data-view="welcome"]) .dropveil { opacity: 1; }
 .tracks-head h2 { font-size: var(--t-lg); }
 .tracks { list-style: none; margin: 0; padding: 0; }
 .track {
-  display: grid; grid-template-columns: 28px 34px 30px minmax(0, 1fr) auto; align-items: center; gap: var(--s2);
+  display: grid; grid-template-columns: 28px 34px 30px minmax(0, 1fr) auto 34px; align-items: center; gap: var(--s2);
   min-height: 60px; padding: 0 var(--s2) 0 0; border-radius: var(--r-row); position: relative; touch-action: pan-y;
   transition: background-color .15s, transform var(--dur-fast) var(--ease-out);
 }
@@ -214,6 +214,10 @@ body.dragging:not([data-view="welcome"]) .dropveil { opacity: 1; }
 .track-scrub-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 99px; }
 /* The triangle's visual mass sits left of its SVG box center, so it needs a small optical nudge. */
 .track-play[data-icon="play"] svg { transform: translate(-1px, .5px); }
+.track-export { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--paper-3); padding: 0; cursor: pointer; position: relative; z-index: 5; opacity: 0; transition: background-color .15s, color .15s, opacity .15s; }
+.track:hover .track-export, .track-export:focus-visible { opacity: 1; }
+.track-export:hover { color: var(--paper); background: rgba(243,236,226,.11); }
+.track-export svg { width: 17px; height: 17px; }
 .track.reading .track-main small::after { content: "Reading tags…"; }
 
 /* inspector */
@@ -418,6 +422,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 44px; }
 @media (hover: none) {
   .art:hover::after { content: none; }
   .art img:not([hidden]) ~ .art-edit { display: grid; }
+  .track-export { opacity: 1; }
   .track:active, .shelf-item:active, .row-link:active { background: rgba(243,236,226,.08); }
 }
 

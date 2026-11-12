@@ -135,6 +135,7 @@ const tracks = new Map(); // id -> { id, file, codec, sampleRate, duration, albu
 let current = { album: null, track: null };
 let pendingArt = null;
 let lastExports = [];
+let exportOnlyTrack = null;
 
 // ---------------------------------------------------------------- views
 
@@ -504,6 +505,7 @@ function renderTracks(a) {
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
       <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}${t.build ? `<span class="build-tag">build ${t.build}</span>` : ""}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
       <span class="dur">${t.file || t.cloud ? fmtTime(t.duration) : `<span class="no-audio" title="Not uploaded yet. Add the file here to play or export it.">No audio here</span>`}</span>
+      <button class="track-export" type="button" data-act="trackExport" aria-label="Export ${esc(t.tags.title || "Untitled")}">${icon("export")}</button>
       <span class="track-scrub-hit" role="slider" tabindex="0" aria-label="Scrub ${esc(t.tags.title || "Untitled")}" aria-valuemin="0" aria-valuemax="${Math.max(1, t.duration || 1)}" aria-valuenow="0" data-scrub="${id}"></span>
     </li>`;
   }).join("");
@@ -727,6 +729,12 @@ const actions = {
     positionScrubHit(row, 0);
     renderInspector();
     await actions.preview();
+  },
+  trackExport: (btn) => {
+    const id = btn.closest(".track")?.dataset.trackId;
+    if (!id || !tracks.has(id)) return;
+    exportOnlyTrack = id;
+    openExport();
   },
   pickArt: () => $("#pickImage").click(),
   replaceAudio: () => $("#pickBuild").click(),
@@ -1200,14 +1208,15 @@ const isTouch = matchMedia("(pointer: coarse)").matches;
 
 function openExport() {
   if (!tracks.size) return;
-  const a = albums.get(current.album);
-  const single = singleAlbum(a);
+  const onlyTrack = exportOnlyTrack ? tracks.get(exportOnlyTrack) : null;
+  const a = albums.get(onlyTrack?.albumId || current.album);
+  const single = !!onlyTrack || singleAlbum(a);
   // A single exports as its own MP3; an album defaults to "this album", with "everything" only when there's more.
   $("#scope").hidden = single || albums.size < 2;
   $('input[name="scope"][value="album"]').checked = true;
-  $("#scopeAlbum").textContent = a ? `${a.trackIds.length} songs in “${a.title || "Untitled album"}”` : "This album";
+  $("#scopeAlbum").textContent = onlyTrack ? `“${onlyTrack.tags.title || "Untitled"}”` : a ? `${a.trackIds.length} songs in “${a.title || "Untitled album"}”` : "This album";
   $("#scopeAll").textContent = `Everything: ${tracks.size} songs in ${albums.size} albums`;
-  $("#exportTitle").textContent = single ? "Export track" : "Export for Spotify";
+  $("#exportTitle").textContent = onlyTrack || single ? "Export track" : "Export for Spotify";
   $("#exportSetup").hidden = false; $("#exportActions").hidden = false; $("#exportList").hidden = true; $("#exportDone").hidden = true;
   $('[data-act="exportZip"]').hidden = single;
   const each = $('[data-act="exportEach"]');
@@ -1216,6 +1225,7 @@ function openExport() {
   trimNote();
   openSheet($("#exportDialog"));
 }
+$("#exportDialog").addEventListener("close", () => { exportOnlyTrack = null; });
 
 /** What trimming costs for the songs about to be exported: only MP3 sources lose anything, because they get encoded twice. */
 function trimNote() {
@@ -1247,7 +1257,10 @@ async function runExport(mode) {
   const scope = $("#scope").hidden ? "album" : $('input[name="scope"]:checked').value;
   busy++;
   const opts = { quality: $('input[name="quality"]:checked').value, trimSilence: $("#trimSilence").checked };
-  const chosen = scope === "album" && current.album ? albums.get(current.album).trackIds.map((id) => tracks.get(id)) : [...albums.values()].flatMap((a) => a.trackIds.map((id) => tracks.get(id)));
+  const chosen = exportOnlyTrack
+    ? [tracks.get(exportOnlyTrack)]
+    : scope === "album" && current.album ? albums.get(current.album).trackIds.map((id) => tracks.get(id)) : [...albums.values()].flatMap((a) => a.trackIds.map((id) => tracks.get(id)));
+  exportOnlyTrack = null;
   for (const a of new Set(chosen.map((t) => albums.get(t.albumId)))) {
     if (a.art && !a.art.bytes) a.art.bytes = new Uint8Array(await a.art.blob.arrayBuffer());
   }
