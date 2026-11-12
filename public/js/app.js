@@ -25,6 +25,16 @@ const wide = matchMedia("(min-width: 900px)");
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
 const uid = () => [...crypto.getRandomValues(new Uint8Array(10))].map((b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
 const fmtTime = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "");
+const audioMime = (codec, fallback = "") => ({
+  mp3: "audio/mpeg", mpeg: "audio/mpeg", m4a: "audio/mp4", mp4: "audio/mp4", aac: "audio/aac",
+  alac: "audio/mp4", wav: "audio/wav", pcm_s16le: "audio/wav", flac: "audio/flac",
+  ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", aiff: "audio/aiff", aif: "audio/aiff",
+  caf: "audio/x-caf", wma: "audio/x-ms-wma",
+}[String(codec || "").toLowerCase()] || fallback);
+const normalizeAudioFile = (file, codec) => {
+  const type = file.type || audioMime(codec);
+  return type && file.type !== type ? new File([file], file.name, { type, lastModified: file.lastModified }) : file;
+};
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const icon = (id) => `<svg aria-hidden="true"><use href="#i-${id}"/></svg>`;
@@ -683,9 +693,26 @@ const actions = {
   preview: async () => {
     const p = $("#player"), t = tracks.get(current.track);
     if (!p.paused) { p.pause(); return; }
-    if (!(await ensureFile(t))) { toast("This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }
-    if (!p.src) p.src = URL.createObjectURL(t.file);
-    try { await p.play(); } catch { toast(`This browser can’t play ${(t.file.name.match(/\.(\w+)$/)?.[1] || t.codec).toUpperCase()} files directly. It still converts fine.`); }
+    // Keep local playback synchronous with the tap. On iOS, awaiting a network fetch first
+    // can consume the user gesture and make audio.play() fail with NotAllowedError.
+    if (!t.file && !(await ensureFile(t))) { toast("This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }
+    t.file = normalizeAudioFile(t.file, t.codec);
+    if (playerTrackId !== t.id) {
+      if (playerUrl) URL.revokeObjectURL(playerUrl);
+      playerUrl = URL.createObjectURL(t.file);
+      playerTrackId = t.id;
+      p.dataset.track = t.id;
+      p.src = playerUrl;
+      p.load();
+    }
+    try {
+      await p.play();
+    } catch (err) {
+      const ext = (t.file.name.match(/\.(\w+)$/)?.[1] || t.codec || "audio").toUpperCase();
+      if (err?.name === "NotAllowedError") toast("Audio is ready. Tap Play again to start it.", "err");
+      else if (err?.name === "NotSupportedError") toast(`This browser can’t play ${ext} files directly. It still converts fine.`, "err");
+      else toast(`Couldn’t play this ${ext} file. Try exporting it again.`, "err");
+    }
   },
   pickArt: () => $("#pickImage").click(),
   replaceAudio: () => $("#pickBuild").click(),
@@ -747,6 +774,7 @@ $("#pickBuild").addEventListener("change", async (e) => { const f = e.target.fil
 $("#pickSend").addEventListener("change", (e) => { sendFiles([...e.target.files]); e.target.value = ""; });
 
 const player = $("#player");
+let playerUrl = "", playerTrackId = null;
 const setPlayButton = (playing) => {
   const b = $('[data-act="preview"]');
   if ($("span", b).textContent === (playing ? "Pause" : "Play")) return;
@@ -1596,14 +1624,15 @@ async function cloudFile(id) {
 
 /** The song's audio as a File: already here, or downloaded once from the account and kept on this device. */
 async function ensureFile(t) {
-  if (t.file) return t.file;
+  if (t.file) { t.file = normalizeAudioFile(t.file, t.codec); return t.file; }
   if (!t.cloud) return null;
   try {
     const r = await fetch(`/api/account/audio/${t.id}`, { credentials: "same-origin" });
     if (!r.ok) return null;
     const name = t.fileName || `${t.tags.title || "song"}.${t.codec || "mp3"}`;
     const lossy = LOSSLESS.test(t.codec || ""); // lossless songs are stored in the account as 320 kbps MP3 copies
-    t.file = new File([await r.blob()], lossy ? name.replace(/\.\w+$/, "") + ".mp3" : name);
+    const type = lossy ? "audio/mpeg" : audioMime(t.codec, r.headers.get("Content-Type") || "");
+    t.file = new File([await r.blob()], lossy ? name.replace(/\.\w+$/, "") + ".mp3" : name, { type });
     if (lossy) Object.assign(t, { codec: "mp3", fileName: t.file.name, sampleRate: [44100, 48000].includes(t.sampleRate) ? t.sampleRate : 44100 });
     save();
     return t.file;
