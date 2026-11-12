@@ -61,6 +61,7 @@ function swapIcon(btn, id) {
   const svg = btn?.querySelector("svg");
   if (!svg) return;
   svg.querySelector("use").setAttribute("href", `#i-${id}`);
+  btn.dataset.icon = id;
   if (!still()) svg.animate([{ opacity: 0, scale: 0.6, filter: "blur(4px)" }, { opacity: 1, scale: 1, filter: "blur(0)" }], { duration: 180, easing: EASE });
 }
 /** Rule 19: past a limit, movement meets more and more resistance (iOS-style). */
@@ -503,7 +504,7 @@ function renderTracks(a) {
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
       <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}${t.build ? `<span class="build-tag">build ${t.build}</span>` : ""}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
       <span class="dur">${t.file || t.cloud ? fmtTime(t.duration) : `<span class="no-audio" title="Not uploaded yet. Add the file here to play or export it.">No audio here</span>`}</span>
-      <input class="track-scrub" type="range" min="0" max="${Math.max(1, t.duration || 1)}" step="0.01" value="0" aria-label="Scrub ${esc(t.tags.title || "Untitled")}" data-scrub="${id}">
+      <span class="track-scrub-hit" role="slider" tabindex="0" aria-label="Scrub ${esc(t.tags.title || "Untitled")}" aria-valuemin="0" aria-valuemax="${Math.max(1, t.duration || 1)}" aria-valuenow="0" data-scrub="${id}"></span>
     </li>`;
   }).join("");
 }
@@ -793,7 +794,12 @@ const setPlayButton = (playing) => {
   $$(".track-play").forEach((play) => {
     const row = play.closest(".track");
     const active = playing && row?.dataset.trackId === player.dataset.track;
-    swapIcon(play, active ? "pause" : "play");
+    const nextIcon = active ? "pause" : "play";
+    if (play.dataset.icon !== nextIcon) {
+      const use = play.querySelector("use");
+      if (use) use.setAttribute("href", `#i-${nextIcon}`);
+      play.dataset.icon = nextIcon;
+    }
     play.setAttribute("aria-label", `${active ? "Pause" : "Play"} ${row?.querySelector(".track-main strong")?.textContent?.replace(/build \d+$/, "").trim() || "track"}`);
   });
 };
@@ -803,8 +809,8 @@ function tickPlay() {
   if (row && player.duration) {
     const progress = (player.currentTime / player.duration) * 100;
     row.style.setProperty("--play", `${progress.toFixed(2)}%`);
-    const scrub = $(".track-scrub", row);
-    if (scrub) { scrub.max = player.duration; scrub.value = player.currentTime; }
+    const scrub = $(".track-scrub-hit", row);
+    if (scrub) { scrub.setAttribute("aria-valuemax", player.duration); scrub.setAttribute("aria-valuenow", player.currentTime); }
   }
   playRaf = player.paused ? 0 : requestAnimationFrame(tickPlay);
 }
@@ -812,17 +818,50 @@ player.addEventListener("play", () => { setPlayButton(true); cancelAnimationFram
 player.addEventListener("pause", () => { setPlayButton(false); tickPlay(); });
 player.addEventListener("ended", () => { $(`.track[data-track-id="${player.dataset.track}"]`)?.style.removeProperty("--play"); });
 
-document.addEventListener("input", (e) => {
-  const scrub = e.target.closest?.("[data-scrub]");
-  if (!scrub) return;
-  if (player.dataset.track !== scrub.dataset.scrub) {
-    current.track = scrub.dataset.scrub;
-    renderInspector();
-    return;
-  }
-  player.currentTime = Number(scrub.value) || 0;
-  const row = scrub.closest(".track");
-  row?.style.setProperty("--play", `${((player.currentTime / Math.max(1, player.duration || Number(scrub.max))) * 100).toFixed(2)}%`);
+function scrubTo(clientX, scrub) {
+  if (player.dataset.track !== scrub.dataset.scrub || !player.duration) return;
+  const rect = scrub.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  player.currentTime = ratio * player.duration;
+  scrub.setAttribute("aria-valuenow", player.currentTime);
+  scrub.closest(".track")?.style.setProperty("--play", `${(ratio * 100).toFixed(2)}%`);
+}
+
+document.addEventListener("pointerdown", (e) => {
+  const scrub = e.target.closest?.(".track-scrub-hit");
+  if (!scrub || player.dataset.track !== scrub.dataset.scrub) return;
+  e.preventDefault();
+  scrub.setPointerCapture?.(e.pointerId);
+  scrubTo(e.clientX, scrub);
+  const move = (ev) => scrubTo(ev.clientX, scrub);
+  const end = () => { scrub.removeEventListener("pointermove", move); scrub.removeEventListener("pointerup", end); scrub.removeEventListener("pointercancel", end); };
+  scrub.addEventListener("pointermove", move);
+  scrub.addEventListener("pointerup", end);
+  scrub.addEventListener("pointercancel", end);
+});
+
+document.addEventListener("wheel", (e) => {
+  const scrub = e.target.closest?.(".track-scrub-hit");
+  if (!scrub || player.dataset.track !== scrub.dataset.scrub || !player.duration) return;
+  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (!delta) return;
+  e.preventDefault();
+  const step = Math.max(0.5, player.duration * 0.012);
+  player.currentTime = Math.max(0, Math.min(player.duration, player.currentTime + (delta > 0 ? step : -step)));
+  scrub.setAttribute("aria-valuenow", player.currentTime);
+  scrub.closest(".track")?.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
+}, { passive: false });
+
+document.addEventListener("keydown", (e) => {
+  const scrub = e.target.closest?.(".track-scrub-hit");
+  if (!scrub || player.dataset.track !== scrub.dataset.scrub || !player.duration) return;
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+  e.preventDefault();
+  if (e.key === "Home") player.currentTime = 0;
+  else if (e.key === "End") player.currentTime = player.duration;
+  else player.currentTime = Math.max(0, Math.min(player.duration, player.currentTime + (e.key === "ArrowRight" ? 5 : -5)));
+  scrub.setAttribute("aria-valuenow", player.currentTime);
+  scrub.closest(".track")?.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
 });
 
 // ---------------------------------------------------------------- reorder by dragging the grip
