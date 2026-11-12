@@ -507,6 +507,7 @@ function renderTracks(a) {
       <span class="track-scrub-hit" role="slider" tabindex="0" aria-label="Scrub ${esc(t.tags.title || "Untitled")}" aria-valuemin="0" aria-valuemax="${Math.max(1, t.duration || 1)}" aria-valuenow="0" data-scrub="${id}"></span>
     </li>`;
   }).join("");
+  requestAnimationFrame(() => $$(".track").forEach((row) => positionScrubHit(row, row.dataset.trackId === player?.dataset.track && player.duration ? player.currentTime / player.duration : 0)));
 }
 
 let lastReady = null;
@@ -804,11 +805,24 @@ const setPlayButton = (playing) => {
   });
 };
 let playRaf = 0;
+const SCRUB_START = 104;
+const SCRUB_RIGHT = 8;
+const SCRUB_HIT_WIDTH = 56;
+function positionScrubHit(row, ratio) {
+  const scrub = $(".track-scrub-hit", row);
+  if (!scrub) return;
+  const lineWidth = Math.max(1, row.clientWidth - SCRUB_START - SCRUB_RIGHT);
+  const width = Math.min(SCRUB_HIT_WIDTH, lineWidth);
+  const left = Math.max(SCRUB_START, Math.min(row.clientWidth - SCRUB_RIGHT - width, SCRUB_START + lineWidth * Math.max(0, Math.min(1, ratio)) - width / 2));
+  scrub.style.left = `${left}px`;
+  scrub.style.width = `${width}px`;
+}
 function tickPlay() {
   const row = $(`.track[data-track-id="${player.dataset.track}"]`);
   if (row && player.duration) {
     const progress = (player.currentTime / player.duration) * 100;
     row.style.setProperty("--play", `${progress.toFixed(2)}%`);
+    positionScrubHit(row, player.currentTime / player.duration);
     const scrub = $(".track-scrub-hit", row);
     if (scrub) { scrub.setAttribute("aria-valuemax", player.duration); scrub.setAttribute("aria-valuenow", player.currentTime); }
   }
@@ -820,11 +834,14 @@ player.addEventListener("ended", () => { $(`.track[data-track-id="${player.datas
 
 function scrubTo(clientX, scrub) {
   if (player.dataset.track !== scrub.dataset.scrub || !player.duration) return;
-  const rect = scrub.getBoundingClientRect();
-  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const row = scrub.closest(".track");
+  const rect = row.getBoundingClientRect();
+  const lineWidth = Math.max(1, row.clientWidth - SCRUB_START - SCRUB_RIGHT);
+  const ratio = Math.max(0, Math.min(1, (clientX - rect.left - SCRUB_START) / lineWidth));
   player.currentTime = ratio * player.duration;
   scrub.setAttribute("aria-valuenow", player.currentTime);
-  scrub.closest(".track")?.style.setProperty("--play", `${(ratio * 100).toFixed(2)}%`);
+  row.style.setProperty("--play", `${(ratio * 100).toFixed(2)}%`);
+  positionScrubHit(row, ratio);
 }
 
 document.addEventListener("pointerdown", (e) => {
@@ -849,7 +866,9 @@ document.addEventListener("wheel", (e) => {
   const step = Math.max(0.5, player.duration * 0.012);
   player.currentTime = Math.max(0, Math.min(player.duration, player.currentTime + (delta > 0 ? step : -step)));
   scrub.setAttribute("aria-valuenow", player.currentTime);
-  scrub.closest(".track")?.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
+  const row = scrub.closest(".track");
+  row?.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
+  if (row) positionScrubHit(row, player.currentTime / player.duration);
 }, { passive: false });
 
 document.addEventListener("keydown", (e) => {
@@ -861,7 +880,9 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "End") player.currentTime = player.duration;
   else player.currentTime = Math.max(0, Math.min(player.duration, player.currentTime + (e.key === "ArrowRight" ? 5 : -5)));
   scrub.setAttribute("aria-valuenow", player.currentTime);
-  scrub.closest(".track")?.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
+  const row = scrub.closest(".track");
+  row?.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
+  if (row) positionScrubHit(row, player.currentTime / player.duration);
 });
 
 // ---------------------------------------------------------------- reorder by dragging the grip
