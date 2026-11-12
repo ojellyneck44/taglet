@@ -722,6 +722,7 @@ const actions = {
     const id = btn.closest(".track")?.dataset.trackId;
     if (!id) return;
     current.track = id;
+    $$(".track").forEach((row) => row.setAttribute("aria-current", row.dataset.trackId === id ? "true" : "false"));
     renderInspector();
     await actions.preview();
   },
@@ -807,7 +808,7 @@ const setPlayButton = (playing) => {
 let playRaf = 0;
 const SCRUB_START = 104;
 const SCRUB_RIGHT = 8;
-const SCRUB_HIT_WIDTH = 56;
+const SCRUB_HIT_WIDTH = 72;
 function positionScrubHit(row, ratio) {
   const scrub = $(".track-scrub-hit", row);
   if (!scrub) return;
