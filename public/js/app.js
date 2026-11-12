@@ -499,9 +499,11 @@ function renderTracks(a) {
     const multiDisc = a.trackIds.some((x) => (tracks.get(x).tags.disc || 1) > 1);
     return `<li class="track" data-track-id="${id}" aria-current="${id === current.track}">
       <button class="grip" type="button" aria-label="Move ${esc(t.tags.title)}. Use arrow keys.">${icon("grip")}</button>
+      <button class="track-play" type="button" data-act="trackPlay" aria-label="Play ${esc(t.tags.title || "Untitled")}">${icon("play")}</button>
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
       <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}${t.build ? `<span class="build-tag">build ${t.build}</span>` : ""}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
       <span class="dur">${t.file || t.cloud ? fmtTime(t.duration) : `<span class="no-audio" title="Not uploaded yet. Add the file here to play or export it.">No audio here</span>`}</span>
+      <input class="track-scrub" type="range" min="0" max="${Math.max(1, t.duration || 1)}" step="0.01" value="0" aria-label="Scrub ${esc(t.tags.title || "Untitled")}" data-scrub="${id}">
     </li>`;
   }).join("");
 }
@@ -714,6 +716,13 @@ const actions = {
       else toast(`Couldn’t play this ${ext} file. Try exporting it again.`, "err");
     }
   },
+  trackPlay: async (btn) => {
+    const id = btn.closest(".track")?.dataset.trackId;
+    if (!id) return;
+    current.track = id;
+    renderInspector();
+    await actions.preview();
+  },
   pickArt: () => $("#pickImage").click(),
   replaceAudio: () => $("#pickBuild").click(),
   install: async () => { const e = installEvent; installEvent = null; showInstallHint(); if (e) { e.prompt(); const r = await e.userChoice.catch(() => null); if (r?.outcome === "accepted") buzz(); } $("#installSheet")?.close(); },
@@ -777,19 +786,44 @@ const player = $("#player");
 let playerUrl = "", playerTrackId = null;
 const setPlayButton = (playing) => {
   const b = $('[data-act="preview"]');
-  if ($("span", b).textContent === (playing ? "Pause" : "Play")) return;
-  swapIcon(b, playing ? "pause" : "play");
-  maskText($("span", b), playing ? "Pause" : "Play");
+  if (b) {
+    swapIcon(b, playing ? "pause" : "play");
+    b.setAttribute("aria-label", playing ? "Pause" : "Play");
+  }
+  $$(".track-play").forEach((play) => {
+    const row = play.closest(".track");
+    const active = playing && row?.dataset.trackId === player.dataset.track;
+    swapIcon(play, active ? "pause" : "play");
+    play.setAttribute("aria-label", `${active ? "Pause" : "Play"} ${row?.querySelector(".track-main strong")?.textContent?.replace(/build \d+$/, "").trim() || "track"}`);
+  });
 };
 let playRaf = 0;
 function tickPlay() {
   const row = $(`.track[data-track-id="${player.dataset.track}"]`);
-  if (row && player.duration) row.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
+  if (row && player.duration) {
+    const progress = (player.currentTime / player.duration) * 100;
+    row.style.setProperty("--play", `${progress.toFixed(2)}%`);
+    const scrub = $(".track-scrub", row);
+    if (scrub) { scrub.max = player.duration; scrub.value = player.currentTime; }
+  }
   playRaf = player.paused ? 0 : requestAnimationFrame(tickPlay);
 }
 player.addEventListener("play", () => { setPlayButton(true); cancelAnimationFrame(playRaf); tickPlay(); });
 player.addEventListener("pause", () => { setPlayButton(false); tickPlay(); });
 player.addEventListener("ended", () => { $(`.track[data-track-id="${player.dataset.track}"]`)?.style.removeProperty("--play"); });
+
+document.addEventListener("input", (e) => {
+  const scrub = e.target.closest?.("[data-scrub]");
+  if (!scrub) return;
+  if (player.dataset.track !== scrub.dataset.scrub) {
+    current.track = scrub.dataset.scrub;
+    renderInspector();
+    return;
+  }
+  player.currentTime = Number(scrub.value) || 0;
+  const row = scrub.closest(".track");
+  row?.style.setProperty("--play", `${((player.currentTime / Math.max(1, player.duration || Number(scrub.max))) * 100).toFixed(2)}%`);
+});
 
 // ---------------------------------------------------------------- reorder by dragging the grip
 

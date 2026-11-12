@@ -186,25 +186,38 @@ body.dragging:not([data-view="welcome"]) .dropveil { opacity: 1; }
 .tracks-head h2 { font-size: var(--t-lg); }
 .tracks { list-style: none; margin: 0; padding: 0; }
 .track {
-  display: grid; grid-template-columns: 28px 30px minmax(0, 1fr) auto; align-items: center; gap: var(--s2);
-  min-height: 56px; padding: 0 var(--s2) 0 0; border-radius: var(--r-row); position: relative; touch-action: pan-y;
-  transition: background-color .15s;
+  display: grid; grid-template-columns: 28px 34px 30px minmax(0, 1fr) auto; align-items: center; gap: var(--s2);
+  min-height: 60px; padding: 0 var(--s2) 0 0; border-radius: var(--r-row); position: relative; touch-action: pan-y;
+  transition: background-color .15s, transform var(--dur-fast) var(--ease-out);
 }
-.track + .track::before { content: ""; position: absolute; left: 66px; right: 8px; top: 0; border-top: 1px solid var(--line); }
+.track + .track::before { content: ""; position: absolute; left: 104px; right: 8px; top: 0; border-top: 1px solid var(--line); }
 .track:hover { background: rgba(243,236,226,.04); }
 .track[aria-current="true"] { background: var(--accent-soft); }
 .track[aria-current="true"] .dur, .track[aria-current="true"] .num { color: var(--paper-2); }
 .track[aria-current="true"]::before, .track[aria-current="true"] + .track::before { display: none; }
 .grip { width: 28px; height: 44px; display: grid; place-items: center; color: var(--paper-3); cursor: grab; border: 0; background: none; padding: 0; touch-action: none; }
 .grip svg { width: 18px; height: 18px; }
+.track-play { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--paper-2); padding: 0; cursor: pointer; position: relative; z-index: 2; transition: background-color .15s, color .15s, transform var(--dur-fast) var(--ease-out); }
+.track-play:hover { color: var(--paper); background: rgba(243,236,226,.11); }
+.track-play:active { transform: scale(.92); }
+.track-play svg { width: 17px; height: 17px; }
+.track[aria-current="true"] .track-play { color: var(--accent); background: var(--accent-soft); }
 .track.lifted { z-index: 3; background: var(--ink-2); box-shadow: 0 14px 30px rgba(0,0,0,.5); cursor: grabbing; }
 .num { font-family: var(--font-mono); font-size: var(--t-sm); color: var(--paper-3); text-align: right; font-variant-numeric: tabular-nums; }
 .num.missing { color: var(--signal); }
 .track-main { min-width: 0; border: 0; background: none; text-align: left; padding: 8px 0; cursor: pointer; }
-.track-main::after { content: ""; position: absolute; inset: 0 0 0 58px; } /* whole row is the target */
+.track-main::after { content: ""; position: absolute; inset: 0 0 0 104px; } /* whole row is the target */
 .track-main strong { display: block; font-weight: 600; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .track-main small { display: block; font-size: var(--t-xs); color: var(--paper-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dur { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--paper-3); font-variant-numeric: tabular-nums; }
+.track-scrub { position: absolute; z-index: 2; left: 104px; right: 8px; bottom: 4px; width: calc(100% - 112px); height: 14px; margin: 0; opacity: 0; pointer-events: none; accent-color: var(--accent); cursor: ew-resize; }
+.track-scrub::-webkit-slider-runnable-track { height: 3px; border-radius: 99px; background: linear-gradient(90deg, var(--accent) var(--play, 0%), rgba(243,236,226,.16) var(--play, 0%)); }
+.track-scrub::-moz-range-track { height: 3px; border-radius: 99px; background: rgba(243,236,226,.16); }
+.track-scrub::-moz-range-progress { height: 3px; border-radius: 99px; background: var(--accent); }
+.track-scrub::-webkit-slider-thumb { width: 10px; height: 10px; margin-top: -3.5px; border: 2px solid var(--accent); border-radius: 50%; background: var(--ink-1); box-shadow: 0 0 0 3px rgba(70,194,176,.12); }
+.track-scrub::-moz-range-thumb { width: 10px; height: 10px; border: 2px solid var(--accent); border-radius: 50%; background: var(--ink-1); box-shadow: 0 0 0 3px rgba(70,194,176,.12); }
+.track[aria-current="true"] .track-scrub, .track:hover .track-scrub, .track-scrub:focus-visible { opacity: 1; pointer-events: auto; }
+.track[aria-current="true"] .track-main { padding-bottom: 12px; }
 .track.reading .track-main small::after { content: "Reading tags…"; }
 
 /* inspector */
