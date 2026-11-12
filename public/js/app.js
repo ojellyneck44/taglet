@@ -719,10 +719,12 @@ const actions = {
     }
   },
   trackPlay: async (btn) => {
-    const id = btn.closest(".track")?.dataset.trackId;
+    const row = btn.closest(".track");
+    const id = row?.dataset.trackId;
     if (!id) return;
     current.track = id;
     $$(".track").forEach((row) => row.setAttribute("aria-current", row.dataset.trackId === id ? "true" : "false"));
+    positionScrubHit(row, 0);
     renderInspector();
     await actions.preview();
   },
@@ -808,15 +810,12 @@ const setPlayButton = (playing) => {
 let playRaf = 0;
 const SCRUB_START = 104;
 const SCRUB_RIGHT = 8;
-const SCRUB_HIT_WIDTH = 72;
 function positionScrubHit(row, ratio) {
   const scrub = $(".track-scrub-hit", row);
   if (!scrub) return;
   const lineWidth = Math.max(1, row.clientWidth - SCRUB_START - SCRUB_RIGHT);
-  const width = Math.min(SCRUB_HIT_WIDTH, lineWidth);
-  const left = Math.max(SCRUB_START, Math.min(row.clientWidth - SCRUB_RIGHT - width, SCRUB_START + lineWidth * Math.max(0, Math.min(1, ratio)) - width / 2));
-  scrub.style.left = `${left}px`;
-  scrub.style.width = `${width}px`;
+  scrub.style.left = `${SCRUB_START}px`;
+  scrub.style.width = `${lineWidth}px`;
 }
 function tickPlay() {
   const row = $(`.track[data-track-id="${player.dataset.track}"]`);
