@@ -212,7 +212,8 @@ body.dragging:not([data-view="welcome"]) .dropveil { opacity: 1; }
 .track-scrub-hit { position: absolute; z-index: 2; left: 104px; bottom: 0; width: 56px; height: 16px; cursor: ew-resize; touch-action: none; pointer-events: none; }
 .track[aria-current="true"] .track-scrub-hit { pointer-events: auto; }
 .track-scrub-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 99px; }
-.track-play[data-icon="play"] svg { transform: translateX(1px); }
+/* The triangle's visual mass sits left of its SVG box center, so it needs a small optical nudge. */
+.track-play[data-icon="play"] svg { transform: translate(2px, .5px); }
 .track.reading .track-main small::after { content: "Reading tags…"; }
 
 /* inspector */
