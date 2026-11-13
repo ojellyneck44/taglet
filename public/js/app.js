@@ -637,7 +637,7 @@ document.addEventListener("keydown", (e) => {
 const actions = {
   pick: () => { pickInto = null; $("#pickAudio").click(); },
   addToAlbum: () => { pickInto = current.album; $("#pickAudio").click(); },
-  fromLink: () => { $("#albumLink").value = ""; openSheet($("#linkImportDialog")); $("#albumLink").focus(); },
+  fromLink: (btn) => { const form = $("#linkImportDialog [data-link-form]"); form.toggleAttribute("data-into", btn?.dataset.linkTarget === "album"); $("#albumLink").value = ""; openSheet($("#linkImportDialog")); $("#albumLink").focus(); },
   share: () => openShare(),
   account: () => { $("#tintMenu").hidden = true; openAccount(); },
   syncLater: () => { hideSyncCard(); renderSyncCard(); },
@@ -699,6 +699,23 @@ const actions = {
   preview: async () => {
     const p = $("#player"), t = tracks.get(current.track);
     if (!p.paused) { p.pause(); return; }
+    // Stream cloud audio directly so first play can start before the whole file downloads.
+    // Awaiting a network fetch first can also consume iOS's user gesture.
+    if (!t.file && t.cloud) {
+      if (playerTrackId !== t.id) {
+        if (playerUrl) { URL.revokeObjectURL(playerUrl); playerUrl = ""; }
+        const mime = LOSSLESS.test(t.codec || "") ? "audio/mpeg" : audioMime(t.codec, "application/octet-stream");
+        playerTrackId = t.id;
+        p.dataset.track = t.id;
+        p.src = `/api/account/audio/${t.id}?mime=${encodeURIComponent(mime)}`;
+        p.load();
+      }
+      try { await p.play(); } catch (err) {
+        if (err?.name === "NotAllowedError") toast("Audio is ready. Tap Play again to start it.", "err");
+        else toast("Couldn’t start this song. Check your connection and try again.", "err");
+      }
+      return;
+    }
     // Keep local playback synchronous with the tap. On iOS, awaiting a network fetch first
     // can consume the user gesture and make audio.play() fail with NotAllowedError.
     if (!t.file && !(await ensureFile(t))) { toast("This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }

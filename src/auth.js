@@ -369,3 +369,9 @@ export async function getAudio(env, user, id, range) {
   if (!ID.test(id)) return null;
   return env.AUDIO.get(audioKey(user, id), range ? { range } : undefined);
 }
+
+export async function audioSize(env, user, id) {
+  if (!ID.test(id)) return 0;
+  const row = await (await authDb(env)).prepare("SELECT size FROM audio WHERE user_id = ? AND track_id = ?").bind(user.id, id).first();
+  return Number(row?.size) || 0;
+}

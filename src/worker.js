@@ -10,6 +10,7 @@ import { logEvent, TEAM_COOKIE } from "./events.js";
 const SHARE_TTL = 30 * 24 * 60 * 60; // seconds
 const MAX_PART = 24 * 1024 * 1024; // KV values top out at 25 MiB
 const PART = /^(meta|art|t\d{1,3})$/;
+const AUDIO_MIMES = new Set(["audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/flac", "audio/ogg", "audio/aiff", "audio/x-caf", "audio/x-ms-wma", "application/octet-stream"]);
 
 // Daily limits, reset at midnight UTC. Per person (by IP address) so one sender can't fill the store, and an
 // overall cap that keeps the whole site under Workers KV's free 1,000 writes a day.
@@ -53,6 +54,15 @@ async function fetchLink(req, env, url) {
     return tooMany(`That’s the daily limit for songs from links. Try again tomorrow, or add the files themselves.`);
   if (what === "audio") logEvent(env, req, "link_import", host.includes("soundcloud") ? "soundcloud" : "youtube");
   return getContainer(env.FETCHER).fetch(new Request(`http://fetcher/${what}?url=${encodeURIComponent(target)}`));
+}
+
+function parseByteRange(value, size) {
+  const m = String(value || "").match(/^bytes=(\d*)-(\d*)$/);
+  if (!m || !size) return { invalid: true };
+  const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+  const end = m[2] ? Math.min(size - 1, Number(m[2])) : size - 1;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= size || start > end) return { invalid: true };
+  return { offset: start, length: end - start + 1, total: size };
 }
 
 export default {
@@ -211,8 +221,21 @@ async function account(req, env, url) {
       if (!(await take(env, `audio-${method}:${user.id}`, 1, method === "PUT" ? 300 : 1000)) || !(await take(env, `audio-${method}`, 1, method === "PUT" ? 10000 : 100000)))
         return json({ error: "rate_limited" }, 429);
       if (method === "GET") {
-        const obj = await auth.getAudio(env, user, audio);
-        return obj ? new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Content-Length": String(obj.size), "Cache-Control": "private, no-store" } }) : new Response(null, { status: 404 });
+        const requestedMime = url.searchParams.get("mime") || "";
+        const mime = AUDIO_MIMES.has(requestedMime) ? requestedMime : "application/octet-stream";
+        const header = req.headers.get("range");
+        let range = null, size = 0;
+        if (header) {
+          size = await auth.audioSize(env, user, audio);
+          range = parseByteRange(header, size);
+          if (range?.invalid) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+        }
+        const obj = await auth.getAudio(env, user, audio, range);
+        if (!obj) return new Response(null, { status: 404 });
+        const total = range ? range.total : obj.size;
+        const headers = { "Content-Type": mime, "Content-Length": String(obj.size), "Accept-Ranges": "bytes", "Cache-Control": "private, no-store" };
+        if (range) headers["Content-Range"] = `bytes ${range.offset}-${range.offset + obj.size - 1}/${total}`;
+        return new Response(obj.body, { status: range ? 206 : 200, headers });
       }
       if (method === "PUT") {
         const origin = req.headers.get("origin");
