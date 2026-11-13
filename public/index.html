@@ -101,7 +101,10 @@
     <nav class="shelf" id="shelf" aria-labelledby="shelfTitle">
       <div class="pane-head">
         <h2 id="shelfTitle">Your music</h2>
-        <button class="btn ghost small" type="button" data-act="pick"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add songs</span></button>
+        <div class="pane-actions">
+          <button class="btn ghost small" type="button" data-act="pick"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>Add songs</span></button>
+          <button class="btn ghost small" type="button" data-act="fromLink"><svg aria-hidden="true"><use href="#i-link"/></svg><span>From link</span></button>
+        </div>
       </div>
       <p class="engine" id="engine" hidden></p>
       <ul class="shelf-list" id="shelfList"></ul>
