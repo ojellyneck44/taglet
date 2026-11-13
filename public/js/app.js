@@ -274,7 +274,7 @@ async function importAudio(audio, source, opts) {
 let retryFiles = null;
 
 function newTrack(file, info) {
-  const t = { id: uid(), fileId: uid(), file, fileName: file.name, cloud: false, codec: info.codec, sampleRate: info.sampleRate, duration: info.duration, tags: info.tags };
+  const t = { id: uid(), fileId: uid(), file: file || null, fileName: file?.name || info.fileName || "", cloud: false, codec: info.codec || "mp3", sampleRate: info.sampleRate || 44100, duration: info.duration || 0, tags: info.tags };
   tracks.set(t.id, t);
   return t;
 }
@@ -340,13 +340,14 @@ function placeTrack(t, info, batch, into) {
   const title = info.tags.album.trim();
   const artist = (info.tags.albumArtist || "").trim();
   const k = (s) => s.toLowerCase();
-  let album = title && [...albums.values()].find((a) => k(a.title) === k(title) && (!artist || !a.albumArtist || k(a.albumArtist) === k(artist)));
+  let album = !into && batch.linkAlbum !== undefined ? albums.get(batch.linkAlbum) : title && [...albums.values()].find((a) => k(a.title) === k(title) && (!artist || !a.albumArtist || k(a.albumArtist) === k(artist)));
   if (!album && !title && batch.loose) album = batch.loose;
   if (!album) {
     album = { id: uid(), title, albumArtist: artist, year: info.tags.year, genre: info.tags.genre, compilation: info.tags.compilation, art: null, trackIds: [] };
     albums.set(album.id, album);
     if (!title) batch.loose = album;
     if (pendingArt) { const f = pendingArt; pendingArt = null; batch.manual.add(album.id); setArtFromFile(f, album); }
+    if (!into) batch.linkAlbum = album.id;
   }
   if (!album.year && info.tags.year) album.year = info.tags.year;
   if (!album.genre && info.tags.genre) album.genre = info.tags.genre;
@@ -499,12 +500,16 @@ function renderTracks(a) {
   $("#tracks").innerHTML = a.trackIds.map((id) => {
     const t = tracks.get(id);
     const multiDisc = a.trackIds.some((x) => (tracks.get(x).tags.disc || 1) > 1);
+    const download = t.linkDownload;
+    const percent = download ? Math.round(download.progress * 100) : 0;
+    const playLabel = download?.status === "downloading" ? `Downloading ${t.tags.title || "song"}, ${percent}%` : `Play ${t.tags.title || "Untitled"}`;
+    const playProgress = download?.status === "downloading" ? ` style="--download:${download.progress}" data-download="true" aria-busy="true"` : "";
     return `<li class="track" data-track-id="${id}" aria-current="${id === current.track}">
       <button class="grip" type="button" aria-label="Move ${esc(t.tags.title)}. Use arrow keys.">${icon("grip")}</button>
-      <button class="track-play" type="button" data-act="trackPlay" aria-label="Play ${esc(t.tags.title || "Untitled")}">${icon("play")}</button>
+      <button class="track-play" type="button" data-act="trackPlay" aria-label="${esc(playLabel)}"${playProgress}>${icon("play")}</button>
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
       <button class="track-main" type="button"><strong>${esc(t.tags.title || "Untitled")}${t.build ? `<span class="build-tag">build ${t.build}</span>` : ""}</strong><small>${esc(joinArtists(t.tags.artists) || "No artist")}</small></button>
-      <span class="dur">${t.file || t.cloud ? fmtTime(t.duration) : `<span class="no-audio" title="Not uploaded yet. Add the file here to play or export it.">No audio here</span>`}</span>
+      <span class="dur">${t.file || t.cloud ? fmtTime(t.duration) : download?.status === "downloading" ? `${percent}%` : download?.status === "error" ? `<span class="no-audio" title="The download failed after three attempts. Try the link again.">Download failed</span>` : `<span class="no-audio" title="Not uploaded yet. Add the file here to play or export it.">No audio here</span>`}</span>
       <button class="track-export" type="button" data-act="trackExport" aria-label="Export ${esc(t.tags.title || "Untitled")}">${icon("export")}</button>
       <span class="track-scrub-hit" role="slider" tabindex="0" aria-label="Scrub ${esc(t.tags.title || "Untitled")}" aria-valuemin="0" aria-valuemax="${Math.max(1, t.duration || 1)}" aria-valuenow="0" data-scrub="${id}"></span>
     </li>`;
@@ -741,6 +746,7 @@ const actions = {
     const row = btn.closest(".track");
     const id = row?.dataset.trackId;
     if (!id) return;
+    if (tracks.get(id)?.linkDownload?.status === "downloading") { toast("This song is still downloading."); return; }
     current.track = id;
     $$(".track").forEach((row) => row.setAttribute("aria-current", row.dataset.trackId === id ? "true" : "false"));
     positionScrubHit(row, 0);
@@ -1021,11 +1027,6 @@ function splitLinkArtistTitle(title, artists, uploader) {
   if (!match) return null;
   const prefix = match[1].trim(), song = match[2].trim();
   if (!prefix || !song) return null;
-
-  const known = [...(artists || []), uploader || ""]
-    .map((name) => String(name).trim().toLocaleLowerCase())
-    .filter(Boolean);
-  if (artists?.length && !known.includes(prefix.toLocaleLowerCase())) return null;
   return { artists: splitArtists(prefix), title: song };
 }
 
@@ -1036,7 +1037,7 @@ function linkTags(m, pl, i, n, art) {
   if (parsed) { artists = parsed.artists; title = parsed.title; }
   else if (!artists.length && m.uploader) artists = [m.uploader];
   title = title.replace(/\s*[([](?:official\s+)?(?:music\s+|lyric\s+)?(?:video|audio|visuali[sz]er|lyrics?)[)\]]/gi, "").trim() || m.title;
-  return { title, artists, album: m.album || pl?.title || "", year: m.year || "", genre: m.genre || "",
+  return { title, artists, album: m.album || pl?.title || "", albumArtist: m.albumArtist || m.uploader || pl?.uploader || "", year: m.year || "", genre: m.genre || "",
     track: m.track || (pl ? i + 1 : 0), trackTotal: pl ? n : 0, art };
 }
 
@@ -1053,39 +1054,105 @@ async function importLink(raw, into) {
     const info = await (await linkApi(`/api/fetch/info?url=${encodeURIComponent(url)}`)).json();
     const list = info.entries || [], pl = info.kind === "playlist" ? info : null;
     if (!list.length) throw new Error("There are no songs at that link.");
-    const shared = pl ? await linkCover(pl.thumbnail) : null; // a playlist or set gets one cover
-    const files = [], hints = new Map(), failed = [];
-    let first = null;
+    const shared = pl ? await linkCover(info.thumbnail) : null;
+    const youtube = !/soundcloud/i.test(url);
+    const hadArt = !!albums.get(into)?.art;
+    const batch = { loose: null, covers: new Map(), manual: new Set(), linkAlbum: null };
+    const jobs = [];
+    let first = null, album = null;
     for (const [i, e] of list.entries()) {
-      status(`Getting ${list.length > 1 ? `${i + 1} of ${list.length}: ` : ""}${e.title || "the song"}`, i, list.length);
-      try {
-        const r = await linkApi(`/api/fetch/audio?url=${encodeURIComponent(e.url)}`);
-        const m = JSON.parse(decodeURIComponent(r.headers.get("X-Taglet-Meta") || "%7B%7D"));
-        const f = new File([await r.blob()], `${safeName(m.title || e.title || "Song")}.${m.ext || "m4a"}`, { type: r.headers.get("Content-Type") || "" });
-        const cover = shared || await linkCover(m.thumbnail);
-        first ||= cover;
-        hints.set(f, linkTags(m, pl, i, list.length, cover?.blob));
-        files.push(f);
-      } catch (err) {
-        failed.push(e.title || "A song");
-        if (/limit|turning/.test(err.message)) { toast(err.message, "err"); break; }
-      }
+      const m = { ...e, uploader: e.uploader || info.uploader, album: e.album || (pl ? info.title : ""), albumArtist: e.albumArtist || info.uploader };
+      const cover = shared || (e.thumbnail ? await linkCover(e.thumbnail) : null);
+      first ||= cover;
+      const tags = linkTags(m, pl, i, list.length, cover?.blob || shared?.blob);
+      const t = newTrack(null, { codec: "mp3", duration: e.duration || 0, fileName: `${safeName(tags.title || e.title || "Song")}.mp3`, tags });
+      t.linkDownload = { status: "downloading", progress: 0 };
+      album = placeTrack(t, { tags, art: cover?.blob || shared?.blob }, batch, into);
+      jobs.push({ t, e, index: i });
     }
+    if (!jobs.length) return false;
+    await settleCovers(batch.covers);
+    if (shared && album && !album.art) setArt(album, shared.blob);
+    if (album.trackIds.length === 1 && !album.title) album.title = tracks.get(album.trackIds[0]).tags.title;
+    for (const id of new Set(jobs.map(({ t }) => t.albumId))) tidyAlbum(albums.get(id));
+    current.album = into && albums.has(into) ? into : album.id;
+    if ((wide.matches || isSingle()) && !current.track) current.track = album.trackIds[0] || null;
     engine.hidden = true;
-    if (failed.length) toast(`${failed.length === list.length ? "None of the songs" : `${failed.length} of ${list.length} songs`} could be brought in${failed.length < 3 ? ` (${failed.join(", ")})` : ""}.`, "err");
-    if (!files.length) return false;
-    const youtube = !/soundcloud/i.test(url), hadArt = !!albums.get(into)?.art;
-    await addFiles(files, ` from ${youtube ? "YouTube" : "SoundCloud"}`, { into, hints });
-    // YouTube thumbnails are wide, so the cover starts as the middle square; open the crop straight away to choose it.
-    const a = albums.get([...tracks.values()].find((t) => t.file === files[0])?.albumId);
+    renderAll();
+    save();
+    toast(`${jobs.length === 1 ? "1 song" : `${jobs.length} songs`} added from ${youtube ? "YouTube" : "SoundCloud"}; downloading audio…`);
+
+    const queue = [...jobs], failed = [];
+    const worker = async () => {
+      while (queue.length) {
+        const job = queue.shift();
+        if (!job) return;
+        const ok = await downloadLinkTrack(job.t, job.e, job.index, list.length);
+        if (!ok) failed.push(job.e.title || "A song");
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    if (failed.length) toast(`${failed.length} ${failed.length === 1 ? "song" : "songs"} could not be downloaded after three attempts.`, "err");
+    // YouTube thumbnails are wide, so the cover starts as the middle square; open the crop once audio is queued.
     const crop = shared || (list.length === 1 ? first : null);
-    if (youtube && crop && a?.art && !hadArt) openCrop(crop.raw, a);
+    if (youtube && crop && album?.art && !hadArt) openCrop(crop.raw, album);
     return true;
   } catch (err) {
     engine.hidden = true;
     toast(err.message, "err");
     return false;
   } finally { busy--; maybeReload(); }
+}
+
+async function readLinkAudio(r, meta, onProgress) {
+  const total = Number(r.headers.get("Content-Length")) || 0;
+  if (!r.body?.getReader) {
+    const blob = await r.blob();
+    onProgress(1);
+    if (!blob.size) throw new Error("The source returned no audio.");
+    return new File([blob], `${safeName(meta.title || "Song")}.${meta.ext || "mp3"}`, { type: r.headers.get("Content-Type") || "audio/mpeg" });
+  }
+  const reader = r.body.getReader(), chunks = [];
+  let size = 0, part;
+  while (!(part = await reader.read()).done) {
+    chunks.push(part.value);
+    size += part.value.byteLength;
+    if (total) onProgress(Math.min(1, size / total));
+  }
+  onProgress(1);
+  if (!size) throw new Error("The source returned no audio.");
+  return new File(chunks, `${safeName(meta.title || "Song")}.${meta.ext || "mp3"}`, { type: r.headers.get("Content-Type") || "audio/mpeg" });
+}
+
+async function downloadLinkTrack(t, entry, index, total) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    t.linkDownload = { status: "downloading", progress: 0, attempt: attempt + 1 };
+    renderAlbum();
+    try {
+      const r = await linkApi(`/api/fetch/audio?url=${encodeURIComponent(entry.url)}`);
+      const meta = JSON.parse(decodeURIComponent(r.headers.get("X-Taglet-Meta") || "%7B%7D"));
+      const file = await readLinkAudio(r, meta, (progress) => {
+        t.linkDownload.progress = progress;
+        const row = `[data-track-id="${t.id}"]`, button = `${row} .track-play`;
+        const play = $(button);
+        if (play) { play.style.setProperty("--download", progress); play.setAttribute("aria-label", `Downloading ${t.tags.title || "song"}, ${Math.round(progress * 100)}%`); }
+        const dur = $(`${row} .dur`);
+        if (dur && !t.file) dur.textContent = `${Math.round(progress * 100)}%`;
+      });
+      Object.assign(t, { file, fileId: uid(), fileName: file.name, cloud: false, codec: meta.ext || "mp3", sampleRate: 44100, duration: meta.duration || t.duration });
+      t.linkDownload = null;
+      save();
+      renderAlbum();
+      return true;
+    } catch (err) {
+      if (attempt === 2) {
+        t.linkDownload = { status: "error", progress: 0, message: err.message };
+        renderAlbum();
+        return false;
+      }
+    }
+  }
+  return false;
 }
 /** The album on screen, if the drop landed on it: anywhere but the welcome screen and the album list. */
 function openAlbumFor(target) {
@@ -1733,7 +1800,7 @@ async function restore() {
       r.onsuccess = () => { const c = r.result; if (c) { files.set(c.key, c.value); c.continue(); } };
     });
     deleted = state.deleted || {};
-    for (const t of state.tracks) tracks.set(t.id, { ...t, file: files.get(t.fileId) || null });
+    for (const t of state.tracks) tracks.set(t.id, { ...t, linkDownload: null, file: files.get(t.fileId) || null });
     for (const a of state.albums) {
       a.trackIds = a.trackIds.filter((id) => tracks.has(id));
       if (!a.trackIds.length) continue;

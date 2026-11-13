@@ -64,7 +64,13 @@ def info():
         return failure(e)
     entries = i.get("entries")
     playlist = entries is not None
-    items = [{"url": e.get("url") or e.get("webpage_url"), "title": e.get("title") or "", "duration": e.get("duration")}
+    items = [{"url": e.get("url") or e.get("webpage_url"), "title": e.get("track") or e.get("title") or "",
+              "artists": e.get("artists") or ([e["artist"]] if e.get("artist") else []),
+              "album": e.get("album") or (i.get("title") if playlist else ""),
+              "albumArtist": e.get("album_artist") or e.get("albumartist") or (uploader(i) if playlist else ""),
+              "uploader": uploader(e) or uploader(i), "year": str(e.get("release_year") or (e.get("upload_date") or "")[:4]),
+              "track": e.get("track_number") or 0, "genre": (e.get("genres") or [e.get("genre") or ""])[0] or "",
+              "thumbnail": thumb(e), "duration": e.get("duration")}
              for e in (list(entries) if playlist else [i]) if e]
     return jsonify(kind="playlist" if playlist else "single", title=i.get("title") or "", uploader=uploader(i),
                    thumbnail=thumb(i), entries=[e for e in items if e["url"]][:MAX_ENTRIES])
@@ -77,7 +83,8 @@ def audio():
         return jsonify(error="unsupported"), 400
     tmp = tempfile.mkdtemp()
     try:
-        opts = {**BASE, "format": "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best", "outtmpl": f"{tmp}/a.%(ext)s",
+        opts = {**BASE, "format": "bestaudio/best", "outtmpl": f"{tmp}/a.%(ext)s",
+                "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"}],
                 "match_filter": yt_dlp.utils.match_filter_func(f"duration < {MAX_SECONDS}")}
         try:
             with yt_dlp.YoutubeDL(opts) as y:
@@ -96,7 +103,8 @@ def audio():
     year = i.get("release_year") or (i.get("upload_date") or "")[:4]
     meta = {"title": i.get("track") or i.get("title") or "", "artists": i.get("artists") or ([i["artist"]] if i.get("artist") else []),
             "album": i.get("album") or "", "year": str(year or ""), "track": i.get("track_number") or 0,
-            "genre": (i.get("genres") or [i.get("genre") or ""])[0] or "", "uploader": uploader(i), "thumbnail": thumb(i), "ext": ext}
+            "genre": (i.get("genres") or [i.get("genre") or ""])[0] or "", "uploader": uploader(i), "thumbnail": thumb(i),
+            "duration": i.get("duration") or 0, "ext": ext}
     return Response(data, mimetype=TYPES.get(ext, "application/octet-stream"),
                     headers={"X-Taglet-Meta": urllib.parse.quote(json.dumps(meta))})
 
