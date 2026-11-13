@@ -56,6 +56,7 @@ body.dragging .dropzone { border-color: var(--accent); background: var(--accent-
 .welcome h1 { font-size: var(--t-2xl); letter-spacing: -0.03em; font-weight: 700; margin-top: var(--s5); }
 .lede { margin-top: var(--s3); font-size: var(--t-md); line-height: 1.55; color: var(--paper-2); max-width: 42ch; }
 .welcome-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s3); margin-top: var(--s6); }
+.mobile-link { display: none; }
 .formats { margin-top: var(--s4); font-size: var(--t-xs); color: var(--paper-3); }
 .install-hint { margin-top: var(--s5); }
 .hang { position: relative; width: 100%; height: 270px; flex: none; }
@@ -341,6 +342,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 44px; }
   .hang { height: 240px; }
   .welcome-actions { margin-top: auto; padding-top: var(--s6); width: 100%; }
   .welcome-actions .btn { flex: 1 1 100%; }
+  .welcome-actions .mobile-link { display: inline-flex; }
   .drop-hint { display: none; }
 
   .workspace { display: block; height: auto; min-height: 100dvh; padding-top: calc(68px + env(safe-area-inset-top)); padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
