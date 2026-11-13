@@ -1011,14 +1011,30 @@ async function linkCover(u) {
   } catch { return null; }
 }
 
-/** Tags for a song from a link. Without an artist field, "Artist - Title" names are split, and the uploader is the fallback. */
+/**
+ * Split the common "Artist - Title" form used by link services. Keep this
+ * deliberately conservative: an existing artist credit wins unless the
+ * title's prefix agrees with that credit (or there is no credit to preserve).
+ */
+function splitLinkArtistTitle(title, artists, uploader) {
+  const match = String(title || "").trim().match(/^(.+?)\s+[-–—|:]\s+(.+)$/);
+  if (!match) return null;
+  const prefix = match[1].trim(), song = match[2].trim();
+  if (!prefix || !song) return null;
+
+  const known = [...(artists || []), uploader || ""]
+    .map((name) => String(name).trim().toLocaleLowerCase())
+    .filter(Boolean);
+  if (artists?.length && !known.includes(prefix.toLocaleLowerCase())) return null;
+  return { artists: splitArtists(prefix), title: song };
+}
+
+/** Tags for a song from a link. Artist/title prefixes are normalized, with the uploader as a fallback. */
 function linkTags(m, pl, i, n, art) {
   let title = m.title || "", artists = m.artists?.length ? m.artists : [];
-  if (!artists.length) {
-    // ponytail: a naive split; it covers the common "Artist - Song (Official Video)" upload.
-    const s = title.match(/^(.+?)\s+[-–—]\s+(.+)$/);
-    if (s) { artists = splitArtists(s[1]); title = s[2]; } else if (m.uploader) artists = [m.uploader];
-  }
+  const parsed = splitLinkArtistTitle(title, artists, m.uploader);
+  if (parsed) { artists = parsed.artists; title = parsed.title; }
+  else if (!artists.length && m.uploader) artists = [m.uploader];
   title = title.replace(/\s*[([](?:official\s+)?(?:music\s+|lyric\s+)?(?:video|audio|visuali[sz]er|lyrics?)[)\]]/gi, "").trim() || m.title;
   return { title, artists, album: m.album || pl?.title || "", year: m.year || "", genre: m.genre || "",
     track: m.track || (pl ? i + 1 : 0), trackTotal: pl ? n : 0, art };
