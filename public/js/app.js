@@ -14,6 +14,7 @@ const ping = (name, detail = "") => { try { navigator.sendBeacon?.("/api/event",
     }
   } catch {}
 }
+import { createQueue } from "./queue.js";
 import { buildKey, fillBatch, joinArtists, safeName, splitArtists, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
 import { b64url, unb64url, newKeyBytes, importKey, seal, shareUrl } from "./sharekit.js";
@@ -133,6 +134,11 @@ function openSheet(dlg) {
 const albums = new Map(); // id -> { id, title, albumArtist, year, genre, compilation, art: {blob,bytes,url}|null, trackIds: [] }
 const tracks = new Map(); // id -> { id, file, codec, sampleRate, duration, albumId, tags: {...per-track} }
 let current = { album: null, track: null };
+// Playback state lives up here because renders can run before the player section below does.
+const player = $("#player");
+let playerUrl = "", playerTrackId = null;
+const queue = createQueue();
+let queueAlbum = null; // the album the queue was started from
 let pendingArt = null;
 let lastExports = [];
 let exportOnlyTrack = null;
@@ -295,7 +301,7 @@ function replaceAudio(t, file, info, newBuild = true) {
   const a = albums.get(t.albumId);
   if (!a.art && info.art) setArt(a, info.art);
   const p = $("#player");
-  if (p.dataset.track === t.id) { p.pause(); p.removeAttribute("src"); p.dataset.track = ""; }
+  if (p.dataset.track === t.id) { p.pause(); p.removeAttribute("src"); p.dataset.track = ""; playerTrackId = null; stopPlayer(); }
   return prev;
 }
 
@@ -453,7 +459,7 @@ function checkAlbum(a) {
 
 // ---------------------------------------------------------------- rendering
 
-function renderAll() { renderShelf(); renderAlbum(); renderInspector(); updateExport(); }
+function renderAll() { syncQueue(); renderShelf(); renderAlbum(); renderInspector(); updateExport(); }
 
 function renderShelf() {
   const ul = $("#shelfList");
@@ -497,6 +503,7 @@ function renderAlbum() {
 }
 
 function renderTracks(a) {
+  syncQueue();
   $("#tracks").innerHTML = a.trackIds.map((id) => {
     const t = tracks.get(id);
     const multiDisc = a.trackIds.some((x) => (tracks.get(x).tags.disc || 1) > 1);
@@ -504,7 +511,7 @@ function renderTracks(a) {
     const percent = download ? Math.round(download.progress * 100) : 0;
     const playLabel = download?.status === "downloading" ? `Downloading ${t.tags.title || "song"}, ${percent}%` : `Play ${t.tags.title || "Untitled"}`;
     const playProgress = download?.status === "downloading" ? ` style="--download:${download.progress}" data-download="true" aria-busy="true"` : "";
-    return `<li class="track" data-track-id="${id}" aria-current="${id === current.track}">
+    return `<li class="track" data-track-id="${id}" aria-current="${id === current.track}"${!player.paused && id === player.dataset.track ? ' data-playing="true"' : ""}>
       <button class="grip" type="button" aria-label="Move ${esc(t.tags.title)}. Use arrow keys.">${icon("grip")}</button>
       <button class="track-play" type="button" data-act="trackPlay" aria-label="${esc(playLabel)}"${playProgress}>${icon("play")}</button>
       <span class="num ${t.tags.track ? "" : "missing"}">${multiDisc ? `${t.tags.disc || 1}·` : ""}${t.tags.track || "?"}</span>
@@ -514,7 +521,8 @@ function renderTracks(a) {
       <span class="track-scrub-hit" role="slider" tabindex="0" aria-label="Scrub ${esc(t.tags.title || "Untitled")}" aria-valuemin="0" aria-valuemax="${Math.max(1, t.duration || 1)}" aria-valuenow="0" data-scrub="${id}"></span>
     </li>`;
   }).join("");
-  requestAnimationFrame(() => $$(".track").forEach((row) => positionScrubHit(row, row.dataset.trackId === player?.dataset.track && player.duration ? player.currentTime / player.duration : 0)));
+  requestAnimationFrame(() => { $$(".track").forEach((row) => positionScrubHit(row, row.dataset.trackId === player?.dataset.track && player.duration ? player.currentTime / player.duration : 0)); tickPlay(); });
+  renderTransport();
 }
 
 let lastReady = null;
@@ -549,8 +557,7 @@ function renderInspector() {
   renderArtists(t);
   const others = ["composer", "bpm", "isrc", "publisher", "copyright", "comment", "lyrics"].filter((k) => String(t.tags[k] || "").trim());
   $("#otherSummary").textContent = others.length ? `${others.length} filled: ${others.join(", ")}` : "Composer, lyrics, BPM, ISRC…";
-  const p = $("#player");
-  if (p.dataset.track !== t.id) { p.pause(); p.removeAttribute("src"); p.dataset.track = t.id; setPlayButton(false); $$(".track").forEach((r) => r.style.removeProperty("--play")); }
+  setPlayButton(!player.paused); // the Play button here follows the song being edited, not the one playing
 }
 
 function renderArtists(t, focusIndex) {
@@ -702,46 +709,29 @@ const actions = {
     toast(`Removed “${t.tags.title}”.`, "", { label: "Undo", run: () => { tracks.set(t.id, t); if (!albums.has(a.id)) albums.set(a.id, a); a.trackIds.push(t.id); tidyAlbum(a); current.album = a.id; renderAll(); if (document.body.dataset.view === "welcome") setView("album"); } });
   },
   preview: async () => {
-    const p = $("#player"), t = tracks.get(current.track);
-    if (!p.paused) { p.pause(); return; }
-    // Stream cloud audio directly so first play can start before the whole file downloads.
-    // Awaiting a network fetch first can also consume iOS's user gesture.
-    if (!t.file && t.cloud) {
-      if (playerTrackId !== t.id) {
-        if (playerUrl) { URL.revokeObjectURL(playerUrl); playerUrl = ""; }
-        const mime = LOSSLESS.test(t.codec || "") ? "audio/mpeg" : audioMime(t.codec, "application/octet-stream");
-        playerTrackId = t.id;
-        p.dataset.track = t.id;
-        p.src = `/api/account/audio/${t.id}?mime=${encodeURIComponent(mime)}`;
-        p.load();
-      }
-      try { await p.play(); } catch (err) {
-        if (err?.name === "NotAllowedError") toast("Audio is ready. Tap Play again to start it.", "err");
-        else toast("Couldn’t start this song. Check your connection and try again.", "err");
-      }
-      return;
-    }
-    // Keep local playback synchronous with the tap. On iOS, awaiting a network fetch first
-    // can consume the user gesture and make audio.play() fail with NotAllowedError.
-    if (!t.file && !(await ensureFile(t))) { toast("This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }
-    t.file = normalizeAudioFile(t.file, t.codec);
-    if (playerTrackId !== t.id) {
-      if (playerUrl) URL.revokeObjectURL(playerUrl);
-      playerUrl = URL.createObjectURL(t.file);
-      playerTrackId = t.id;
-      p.dataset.track = t.id;
-      p.src = playerUrl;
-      p.load();
-    }
-    try {
-      await p.play();
-    } catch (err) {
-      const ext = (t.file.name.match(/\.(\w+)$/)?.[1] || t.codec || "audio").toUpperCase();
-      if (err?.name === "NotAllowedError") toast("Audio is ready. Tap Play again to start it.", "err");
-      else if (err?.name === "NotSupportedError") toast(`This browser can’t play ${ext} files directly. It still converts fine.`, "err");
-      else toast(`Couldn’t play this ${ext} file. Try exporting it again.`, "err");
-    }
+    const t = tracks.get(current.track);
+    if (!t) return;
+    if (playerTrackId === t.id && player.getAttribute("src") && !player.ended) { if (player.paused) await resumePlayer(); else player.pause(); return; }
+    if (!t.file && !t.cloud && !(await ensureFile(t))) { toast("This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }
+    await playFrom(t.albumId, t.id);
   },
+  albumPlay: async () => {
+    const a = albums.get(current.album);
+    if (!a) return;
+    if (queueAlbum === a.id && playerTrackId && player.getAttribute("src") && !player.ended) { if (player.paused) await resumePlayer(); else player.pause(); return; }
+    const list = playable(a);
+    if (!list.length) { toast("None of these songs has audio here yet. Add the files to play them.", "err"); return; }
+    // Press play on the first song and it runs to the last. With shuffle on, any song can open.
+    await playFrom(a.id, queue.shuffle ? list[Math.floor(Math.random() * list.length)] : list[0]);
+  },
+  qNext: async () => { const id = queue.next(false); if (id) await startPlayback(id); },
+  qPrev: async () => {
+    const id = queue.prev(player.currentTime || 0);
+    if (!id) return;
+    if (id === playerTrackId) { player.currentTime = 0; await resumePlayer(); } else await startPlayback(id);
+  },
+  qShuffle: () => { queue.toggleShuffle(); renderTransport(); },
+  qRepeat: () => { queue.cycleRepeat(); renderTransport(); },
   trackPlay: async (btn) => {
     const row = btn.closest(".track");
     const id = row?.dataset.trackId;
@@ -818,17 +808,18 @@ $("#pickImage").addEventListener("change", (e) => {
 $("#pickBuild").addEventListener("change", async (e) => { const f = e.target.files[0]; try { if (f && current.track) await addFiles([f], "", { target: current.track }); } finally { e.target.value = ""; } });
 $("#pickSend").addEventListener("change", (e) => { sendFiles([...e.target.files]); e.target.value = ""; });
 
-const player = $("#player");
-let playerUrl = "", playerTrackId = null;
 const setPlayButton = (playing) => {
   const b = $('[data-act="preview"]');
   if (b) {
-    swapIcon(b, playing ? "pause" : "play");
-    b.setAttribute("aria-label", playing ? "Pause" : "Play");
+    const here = playing && player.dataset.track === current.track;
+    if (b.dataset.icon !== (here ? "pause" : "play")) swapIcon(b, here ? "pause" : "play");
+    b.setAttribute("aria-label", here ? "Pause" : "Play");
   }
+  renderTransport();
   $$(".track-play").forEach((play) => {
     const row = play.closest(".track");
     const active = playing && row?.dataset.trackId === player.dataset.track;
+    if (row) { if (active) row.dataset.playing = "true"; else delete row.dataset.playing; }
     const nextIcon = active ? "pause" : "play";
     if (play.dataset.icon !== nextIcon) {
       const use = play.querySelector("use");
@@ -863,7 +854,155 @@ function tickPlay() {
 }
 player.addEventListener("play", () => { setPlayButton(true); cancelAnimationFrame(playRaf); tickPlay(); });
 player.addEventListener("pause", () => { setPlayButton(false); tickPlay(); });
-player.addEventListener("ended", () => { $(`.track[data-track-id="${player.dataset.track}"]`)?.style.removeProperty("--play"); });
+player.addEventListener("ended", () => {
+  $(`.track[data-track-id="${player.dataset.track}"]`)?.style.removeProperty("--play");
+  advance();
+});
+
+// ---------------------------------------------------------------- the queue: linear playback, shuffle, repeat, lock screen
+// One <audio> element plays everything, so the OS treats Taglet as a music app: it keeps playing with the screen
+// off or the app in the background, and the lock screen shows the song, artists, album and cover below.
+
+/** Songs in an album that have audio to play, in album order. */
+const playable = (a) => a.trackIds.filter((id) => { const t = tracks.get(id); return t && (t.file || t.cloud); });
+
+/** Albums and songs change under a playing queue (reorder, delete, sync). Keep it true to them. */
+function syncQueue() {
+  if (!queueAlbum) return;
+  const a = albums.get(queueAlbum);
+  if (!a || (playerTrackId && !tracks.has(playerTrackId))) { stopPlayer(); return; }
+  queue.sync(playable(a));
+}
+
+function stopPlayer() {
+  player.pause();
+  player.removeAttribute("src");
+  player.dataset.track = "";
+  playerTrackId = null;
+  if (playerUrl) { URL.revokeObjectURL(playerUrl); playerUrl = ""; }
+  queue.clear();
+  queueAlbum = null;
+  if (ms) { ms.metadata = null; ms.playbackState = "none"; }
+  setPlayButton(false);
+}
+
+async function playFrom(albumId, startId) {
+  const a = albums.get(albumId);
+  if (!a) return false;
+  queueAlbum = albumId;
+  queue.load(playable(a), startId);
+  return startPlayback(startId);
+}
+
+/**
+ * Point the player at a song and play it. Everything before play() is synchronous on purpose: with the app in the
+ * background a browser may suspend the page once audio stops, so the next song has to start inside the `ended` event.
+ */
+async function startPlayback(id) {
+  const t = tracks.get(id);
+  if (!t || !(t.file || t.cloud)) return false;
+  if (playerTrackId !== id || !player.getAttribute("src")) {
+    const old = playerUrl;
+    if (t.file) {
+      t.file = normalizeAudioFile(t.file, t.codec);
+      playerUrl = URL.createObjectURL(t.file);
+      player.src = playerUrl;
+    } else {
+      // Stream synced audio so it starts before the whole file arrives.
+      const mime = LOSSLESS.test(t.codec || "") ? "audio/mpeg" : audioMime(t.codec, "application/octet-stream");
+      playerUrl = "";
+      player.src = `/api/account/audio/${t.id}?mime=${encodeURIComponent(mime)}`;
+    }
+    if (old) URL.revokeObjectURL(old);
+    playerTrackId = id;
+    player.dataset.track = id;
+    player.preload = "auto";
+    player.load();
+  } else {
+    player.currentTime = 0;
+  }
+  queue.jump(id);
+  updateMediaSession(t);
+  try {
+    await player.play();
+    return true;
+  } catch (err) {
+    const ext = (t.file?.name.match(/\.(\w+)$/)?.[1] || t.codec || "audio").toUpperCase();
+    if (err?.name === "NotAllowedError") toast("Audio is ready. Tap Play again to start it.", "err");
+    else if (err?.name === "NotSupportedError") toast(`This browser can’t play ${ext} files directly. It still converts fine.`, "err");
+    else if (t.file) toast(`Couldn’t play this ${ext} file. Try exporting it again.`, "err");
+    else toast("Couldn’t start this song. Check your connection and try again.", "err");
+    return false;
+  }
+}
+
+/** Play after a pause. After the last song of an album ended, it starts the album over. */
+async function resumePlayer() {
+  if (player.ended && queue.size) {
+    const first = queue.ids[0];
+    queue.load(queue.ids, first);
+    await startPlayback(queue.current);
+    return;
+  }
+  try { await player.play(); } catch (err) { if (err?.name === "NotAllowedError") toast("Tap Play again to start it.", "err"); }
+}
+
+/** A song ended: on to the next, which also runs while the app is in the background. A song that won't play is skipped. */
+async function advance() {
+  for (let tries = 0; tries <= queue.size; tries++) {
+    const id = queue.next(true);
+    if (!id) break;
+    if (await startPlayback(id)) return;
+  }
+  if (ms) ms.playbackState = "paused";
+  setPlayButton(false);
+}
+
+function renderTransport() {
+  const bar = $("#transport");
+  if (!bar) return;
+  const main = $('[data-act="albumPlay"]', bar), shuffle = $('[data-act="qShuffle"]', bar), repeat = $('[data-act="qRepeat"]', bar);
+  const on = !player.paused && !!queueAlbum && queueAlbum === current.album;
+  if (main.dataset.icon !== (on ? "pause" : "play")) swapIcon(main, on ? "pause" : "play");
+  main.setAttribute("aria-label", on ? "Pause" : "Play album");
+  shuffle.setAttribute("aria-pressed", String(queue.shuffle));
+  repeat.setAttribute("aria-pressed", String(queue.repeat !== "off"));
+  repeat.dataset.mode = queue.repeat;
+  repeat.setAttribute("aria-label", queue.repeat === "one" ? "Repeat: this song" : queue.repeat === "all" ? "Repeat: all songs" : "Repeat: off");
+  $('[data-act="qPrev"]', bar).disabled = $('[data-act="qNext"]', bar).disabled = !queue.size;
+}
+
+// What the phone's own player (lock screen, Control Center, car, headphones) shows and can do.
+const ms = "mediaSession" in navigator ? navigator.mediaSession : null;
+const artUrls = new WeakMap(); // cover blob -> a URL of its own, so changing the cover on screen can't pull it from the lock screen
+function mediaArtwork(a) {
+  if (!a?.art) return [];
+  const blob = a.art.blob;
+  if (!blob) return a.art.url ? [{ src: a.art.url, sizes: "1200x1200", type: "image/jpeg" }] : [];
+  if (!artUrls.has(blob)) artUrls.set(blob, URL.createObjectURL(blob));
+  return [{ src: artUrls.get(blob), sizes: "1200x1200", type: blob.type || "image/jpeg" }];
+}
+function updateMediaSession(t) {
+  if (!ms || typeof MediaMetadata === "undefined") return;
+  const a = albums.get(t.albumId);
+  ms.metadata = new MediaMetadata({ title: t.tags.title || "Untitled", artist: joinArtists(t.tags.artists), album: a?.title || "", artwork: mediaArtwork(a) });
+}
+function syncPosition() {
+  if (!ms?.setPositionState || !Number.isFinite(player.duration) || !player.duration) return;
+  try { ms.setPositionState({ duration: player.duration, playbackRate: player.playbackRate || 1, position: Math.min(player.currentTime, player.duration) }); } catch {}
+}
+if (ms) {
+  const handle = (action, fn) => { try { ms.setActionHandler(action, fn); } catch {} };
+  handle("play", () => resumePlayer());
+  handle("pause", () => player.pause());
+  handle("previoustrack", () => actions.qPrev());
+  handle("nexttrack", () => actions.qNext());
+  handle("seekto", (d) => { if (Number.isFinite(d.seekTime)) { player.currentTime = d.seekTime; syncPosition(); } });
+  // No seekbackward/seekforward on purpose: iOS swaps Previous and Next for 10-second skips when they exist.
+  player.addEventListener("play", () => { ms.playbackState = "playing"; syncPosition(); });
+  player.addEventListener("pause", () => { if (!player.ended) ms.playbackState = "paused"; syncPosition(); });
+  for (const ev of ["loadedmetadata", "durationchange", "seeked", "ratechange"]) player.addEventListener(ev, syncPosition);
+}
 
 function scrubTo(clientX, scrub) {
   if (player.dataset.track !== scrub.dataset.scrub || !player.duration) return;

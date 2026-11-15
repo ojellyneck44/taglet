@@ -188,6 +188,23 @@ body.dragging:not([data-view="welcome"]) .dropveil { opacity: 1; }
 
 .tracks-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s2); }
 .tracks-head h2 { font-size: var(--t-lg); }
+/* Playback bar: shuffle, previous, play, next, repeat. Controls the queue even while you edit other songs. */
+.transport { display: flex; align-items: center; justify-content: center; gap: var(--s2); margin: 0 0 var(--s3); }
+.t-btn { position: relative; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; padding: 0; background: transparent; color: var(--paper-2); cursor: pointer; transition: background-color .15s, color .15s, transform var(--dur-fast) var(--ease-out); }
+.t-btn:hover:not(:disabled) { color: var(--paper); background: rgba(243,236,226,.09); }
+.t-btn:active:not(:disabled) { transform: scale(.92); }
+.t-btn:disabled { opacity: .35; cursor: default; }
+.t-btn svg { width: 22px; height: 22px; }
+.t-btn[aria-pressed="true"] { color: var(--accent); }
+.t-btn[aria-pressed="true"]::after { content: ""; position: absolute; bottom: 5px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor; }
+.t-main { width: 52px; height: 52px; background: var(--accent); color: #04201B; }
+.t-main:hover:not(:disabled) { background: var(--accent); color: #04201B; filter: brightness(1.08); }
+.t-main svg { width: 24px; height: 24px; }
+.t-main[data-icon="play"] svg { transform: translateX(1px); }
+.t-btn .one { display: none; position: absolute; top: 9px; right: 8px; font: 700 9px/1 var(--font-mono); }
+.t-btn[data-mode="one"] .one { display: block; }
+.track[data-playing="true"] .track-main strong { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .t-btn { transition: none; } }
 .tracks { list-style: none; margin: 0; padding: 0; }
 .track {
   display: grid; grid-template-columns: 28px 34px 30px minmax(0, 1fr) auto 34px; align-items: center; gap: var(--s2);
@@ -448,6 +465,7 @@ body[data-single] .album-title,
 body[data-single] .field:has([data-album="albumArtist"]),
 body[data-single] .switch:has([data-album="compilation"]),
 body[data-single] .tracks-head,
+body[data-single] .transport,
 body[data-single] .tracks,
 body[data-single] .field:has([data-track="track"]),
 body[data-single] .field:has([data-track="disc"]),

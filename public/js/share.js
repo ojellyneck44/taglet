@@ -29,9 +29,10 @@ async function part(name, tries = 3) {
   }
 }
 
-const cache = new Map(); // track index -> blob URL
+const cache = new Map(); // track index -> promise of a blob URL
+const ready = new Map(); // track index -> the blob URL once it's there, so the next song can start without waiting
 async function trackUrl(i) {
-  if (!cache.has(i)) cache.set(i, part(`t${i}`).then((b) => URL.createObjectURL(new Blob([b], { type: "audio/mpeg" }))));
+  if (!cache.has(i)) cache.set(i, part(`t${i}`).then((b) => { const u = URL.createObjectURL(new Blob([b], { type: "audio/mpeg" })); ready.set(i, u); return u; }));
   return cache.get(i);
 }
 
@@ -74,8 +75,10 @@ async function boot() {
         </li>`).join("")}</ol>
       <p class="note">These are MP3s with the title, artists, album and cover already written in, so Spotify’s Local Files shows them properly. They were decrypted in your browser; Taglet’s server only ever held scrambled data.</p>
     </div>`;
+  let coverUrl = "";
   if (meta.art) part("art").then((b) => {
-    const url = URL.createObjectURL(new Blob([b], { type: "image/jpeg" }));
+    const url = coverUrl = URL.createObjectURL(new Blob([b], { type: "image/jpeg" }));
+    updateMedia();
     $("#cover").innerHTML = `<img src="${url}" alt="Cover of ${esc(meta.title)}">`;
     const amb = $("#ambient"); amb.src = url; amb.hidden = false; $(".ambient").classList.add("on");
   }).catch(() => {});
@@ -89,15 +92,36 @@ async function boot() {
     if (r && player.duration) r.style.setProperty("--play", `${((player.currentTime / player.duration) * 100).toFixed(2)}%`);
     raf = player.paused ? 0 : requestAnimationFrame(tick);
   };
+  // What the phone's own player shows: the song, its artists, the album and the cover, with Previous and Next.
+  const ms = "mediaSession" in navigator ? navigator.mediaSession : null;
+  function updateMedia() {
+    if (!ms || playing < 0 || typeof MediaMetadata === "undefined") return;
+    const t = meta.tracks[playing];
+    ms.metadata = new MediaMetadata({ title: t.title, artist: (t.artists || []).join(", "), album: meta.title, artwork: coverUrl ? [{ src: coverUrl, sizes: "1200x1200", type: "image/jpeg" }] : [] });
+  }
+  const position = () => { if (ms?.setPositionState && Number.isFinite(player.duration) && player.duration) try { ms.setPositionState({ duration: player.duration, playbackRate: player.playbackRate || 1, position: Math.min(player.currentTime, player.duration) }); } catch {} };
   async function play(i) {
     if (i === playing && !player.paused) { player.pause(); return; }
     if (i !== playing) {
       if (playing >= 0) { rowOf(playing).classList.remove("on"); rowOf(playing).style.removeProperty("--play"); setBtn(playing, false); }
       playing = i;
       rowOf(i).classList.add("on");
-      try { player.src = await trackUrl(i); } catch { rowOf(i).querySelector("small").textContent = "Couldn’t load this song."; return; }
+      // A song that's already decrypted starts in the same breath as the last one ending, which keeps playing in the background.
+      try { player.src = ready.get(i) || await trackUrl(i); } catch { rowOf(i).querySelector("small").textContent = "Couldn’t load this song."; return; }
+      updateMedia();
+      if (i + 1 < meta.tracks.length) trackUrl(i + 1).catch(() => {}); // get the next one ready
     }
     player.play().catch(() => {});
+  }
+  const step = (d) => { const i = playing + d; if (playing >= 0 && i >= 0 && i < meta.tracks.length) play(i); };
+  if (ms) {
+    const on = (a, f) => { try { ms.setActionHandler(a, f); } catch {} };
+    on("play", () => player.play().catch(() => {}));
+    on("pause", () => player.pause());
+    on("previoustrack", () => { if (player.currentTime > 3 || playing <= 0) player.currentTime = 0; else step(-1); });
+    on("nexttrack", () => step(1));
+    on("seekto", (d) => { if (Number.isFinite(d.seekTime)) { player.currentTime = d.seekTime; position(); } });
+    for (const ev of ["loadedmetadata", "durationchange", "seeked", "play", "pause"]) player.addEventListener(ev, () => { ms.playbackState = player.paused ? "paused" : "playing"; position(); });
   }
   player.addEventListener("play", () => { setBtn(playing, true); cancelAnimationFrame(raf); tick(); });
   player.addEventListener("pause", () => { setBtn(playing, false); tick(); });
