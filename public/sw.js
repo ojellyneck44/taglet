@@ -1,6 +1,6 @@
 // Same approach as Any Day Now: network-first app shell, so every online load gets the newest build and the
 // cache is only an offline fallback. The audio engine and fonts never change at a given URL, so they're cache-first.
-const CACHE = "taglet-v18";
+const CACHE = "taglet-v19";
 const SHELL = [
   "/", "/css/base.css", "/css/app.css", "/js/app.js", "/js/queue.js", "/js/engine.js", "/js/tags.js", "/js/link.js",
   "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png",
@@ -20,7 +20,7 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== "taglet-share").map((k) => caches.delete(k))))
+    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== "taglet-share" && k !== "taglet-art").map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -39,6 +39,12 @@ self.addEventListener("fetch", (e) => {
       }
       return Response.redirect("/?shared=1", 303);
     })());
+    return;
+  }
+
+  // Album covers for the phone's lock screen: kept on the device in Cache Storage, served from there.
+  if (url.pathname.startsWith("/media-art/")) {
+    e.respondWith(caches.open("taglet-art").then((c) => c.match(url.pathname)).then((r) => r || new Response("", { status: 404 })));
     return;
   }
 

@@ -895,7 +895,7 @@ function stopPlayer() {
   if (playerUrl) { URL.revokeObjectURL(playerUrl); playerUrl = ""; }
   queue.clear();
   queueAlbum = null;
-  if (ms) { ms.metadata = null; ms.playbackState = "none"; }
+  if (ms) ms.metadata = null;
   setPlayButton(false);
 }
 
@@ -968,7 +968,6 @@ async function advance() {
     if (!id) break;
     if (await startPlayback(id)) return;
   }
-  if (ms) ms.playbackState = "paused";
   setPlayButton(false);
 }
 
@@ -988,37 +987,42 @@ function renderTransport() {
 
 // What the phone's own player (lock screen, Control Center, car, headphones) shows and can do.
 const ms = "mediaSession" in navigator ? navigator.mediaSession : null;
-// iOS won't draw a blob: URL as lock-screen artwork, so the cover goes in as a small data: URL instead.
-const artData = new Map(); // cover blob -> Promise of a 512px JPEG data: URL
-function mediaArtwork(a) {
+// iOS only draws lock-screen artwork from a real URL, not blob: or data:. The cover stays on the device: it's put in
+// Cache Storage under a same-origin path, and the service worker (sw.js) answers that path from there.
+const ART_CACHE = "taglet-art", DEFAULT_ART = { src: "/icon-512.png", sizes: "512x512", type: "image/png" }; // the Taglet tag, until a cover is set
+const artKeys = new WeakMap(); // cover blob -> its path
+async function mediaArtwork(a) {
   const blob = a?.art?.blob;
-  if (!blob) return null;
-  if (!artData.has(blob)) {
-    artData.set(blob, (async () => {
-      const bmp = await createImageBitmap(blob);
-      const c = document.createElement("canvas");
-      c.width = c.height = 512;
-      c.getContext("2d").drawImage(bmp, 0, 0, 512, 512); // covers are saved square
-      bmp.close?.();
-      return c.toDataURL("image/jpeg", 0.88);
-    })().catch(() => null));
+  if (!blob || !("caches" in self)) return null;
+  let path = artKeys.get(blob);
+  if (!path) {
+    path = `/media-art/${a.art.hash || uid()}-${Date.now().toString(36)}.jpg`;
+    const cache = await caches.open(ART_CACHE);
+    await cache.put(path, new Response(blob, { headers: { "content-type": "image/jpeg" } }));
+    for (const req of await cache.keys()) if (new URL(req.url).pathname !== path && !(await isInUse(req))) await cache.delete(req); // old covers
+    artKeys.set(blob, path);
   }
-  return artData.get(blob);
+  return { src: path, sizes: "512x512", type: "image/jpeg" };
 }
+const isInUse = async (req) => [...albums.values()].some((x) => x.art?.blob && artKeys.get(x.art.blob) === new URL(req.url).pathname);
 function updateMediaSession(t) {
   if (!ms || typeof MediaMetadata === "undefined") return;
   const a = albums.get(t.albumId);
-  const set = (src) => { ms.metadata = new MediaMetadata({ title: t.tags.title || "Untitled", artist: joinArtists(t.tags.artists), album: a?.title || "", artwork: src ? [{ src, sizes: "512x512", type: "image/jpeg" }] : [] }); };
-  set("");
-  mediaArtwork(a)?.then((src) => { if (src && playerTrackId === t.id) set(src); });
+  const set = (art) => { ms.metadata = new MediaMetadata({ title: t.tags.title || "Untitled", artist: joinArtists(t.tags.artists), album: a?.title || "", artwork: [art] }); };
+  set(a?.art?.blob && artKeys.get(a.art.blob) ? { src: artKeys.get(a.art.blob), sizes: "512x512", type: "image/jpeg" } : DEFAULT_ART);
+  if (a?.art?.blob && !artKeys.get(a.art.blob)) mediaArtwork(a).then((art) => { if (art && playerTrackId === t.id) set(art); }).catch(() => {});
   claimTransportControls();
 }
-/** Previous/Next and the scrubber, and no 10-second skips: iOS shows the skips instead when those handlers are absent. */
+/**
+ * Previous/Next and the scrubber, and no 10-second skips: iOS shows the skips instead when those handlers are absent.
+ * Play and Pause are left to the browser on purpose. With the app in the background its JavaScript is asleep, so a
+ * handler there can't run and the song could pause but never resume; the browser resumes the audio itself.
+ */
 function claimTransportControls() {
   if (!ms) return;
   const handle = (action, fn) => { try { ms.setActionHandler(action, fn); } catch {} };
-  handle("play", () => resumePlayer());
-  handle("pause", () => player.pause());
+  handle("play", null);
+  handle("pause", null);
   handle("previoustrack", () => actions.qPrev());
   handle("nexttrack", () => actions.qNext());
   handle("seekto", (d) => { if (Number.isFinite(d.seekTime)) { player.currentTime = d.seekTime; syncPosition(); } });
@@ -1031,8 +1035,8 @@ function syncPosition() {
 }
 if (ms) {
   claimTransportControls();
-  player.addEventListener("play", () => { ms.playbackState = "playing"; syncPosition(); });
-  player.addEventListener("pause", () => { if (!player.ended) ms.playbackState = "paused"; syncPosition(); });
+  player.addEventListener("play", syncPosition); // the browser reports playing/paused from the audio itself
+  player.addEventListener("pause", syncPosition);
   for (const ev of ["loadedmetadata", "durationchange", "seeked", "ratechange"]) player.addEventListener(ev, syncPosition);
 }
 

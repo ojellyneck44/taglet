@@ -97,7 +97,7 @@ async function boot() {
   function updateMedia() {
     if (!ms || playing < 0 || typeof MediaMetadata === "undefined") return;
     const t = meta.tracks[playing];
-    ms.metadata = new MediaMetadata({ title: t.title, artist: (t.artists || []).join(", "), album: meta.title, artwork: coverUrl ? [{ src: coverUrl, sizes: "1200x1200", type: "image/jpeg" }] : [] });
+    ms.metadata = new MediaMetadata({ title: t.title, artist: (t.artists || []).join(", "), album: meta.title, artwork: [...(coverUrl ? [{ src: coverUrl, sizes: "1200x1200", type: "image/jpeg" }] : []), { src: "/icon-512.png", sizes: "512x512", type: "image/png" }] });
   }
   const position = () => { if (ms?.setPositionState && Number.isFinite(player.duration) && player.duration) try { ms.setPositionState({ duration: player.duration, playbackRate: player.playbackRate || 1, position: Math.min(player.currentTime, player.duration) }); } catch {} };
   async function play(i) {
@@ -116,12 +116,12 @@ async function boot() {
   const step = (d) => { const i = playing + d; if (playing >= 0 && i >= 0 && i < meta.tracks.length) play(i); };
   if (ms) {
     const on = (a, f) => { try { ms.setActionHandler(a, f); } catch {} };
-    on("play", () => player.play().catch(() => {}));
-    on("pause", () => player.pause());
+    on("play", null); // left to the browser: in the background our script is asleep and couldn't resume
+    on("pause", null);
     on("previoustrack", () => { if (player.currentTime > 3 || playing <= 0) player.currentTime = 0; else step(-1); });
     on("nexttrack", () => step(1));
     on("seekto", (d) => { if (Number.isFinite(d.seekTime)) { player.currentTime = d.seekTime; position(); } });
-    for (const ev of ["loadedmetadata", "durationchange", "seeked", "play", "pause"]) player.addEventListener(ev, () => { ms.playbackState = player.paused ? "paused" : "playing"; position(); });
+    for (const ev of ["loadedmetadata", "durationchange", "seeked", "play", "pause"]) player.addEventListener(ev, position);
   }
   player.addEventListener("play", () => { setBtn(playing, true); cancelAnimationFrame(raf); tick(); });
   player.addEventListener("pause", () => { setBtn(playing, false); tick(); });
