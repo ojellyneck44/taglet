@@ -139,6 +139,7 @@ const player = $("#player");
 let playerUrl = "", playerTrackId = null;
 const queue = createQueue();
 let queueAlbum = null; // the album the queue was started from
+const held = new Map(); // track id -> { fileId, blob }: in-memory copies of songs about to play (see warmAudio)
 let pendingArt = null;
 let lastExports = [];
 let exportOnlyTrack = null;
@@ -558,6 +559,7 @@ function renderInspector() {
   const others = ["composer", "bpm", "isrc", "publisher", "copyright", "comment", "lyrics"].filter((k) => String(t.tags[k] || "").trim());
   $("#otherSummary").textContent = others.length ? `${others.length} filled: ${others.join(", ")}` : "Composer, lyrics, BPM, ISRC…";
   setPlayButton(!player.paused); // the Play button here follows the song being edited, not the one playing
+  warmAudio(t.id); // the song you're looking at is the one you're likely to play next
 }
 
 function renderArtists(t, focusIndex) {
@@ -868,6 +870,19 @@ player.addEventListener("ended", () => {
 // One <audio> element plays everything, so the OS treats Taglet as a music app: it keeps playing with the screen
 // off or the app in the background, and the lock screen shows the song, artists, album and cover below.
 
+// A song read back from IndexedDB is a file-backed Blob, and iOS can lose it while the app sleeps, which is when a
+// paused song needs to resume. So the songs about to play are copied into memory first (two at a time at most).
+async function warmAudio(id) {
+  const t = tracks.get(id);
+  if (!t?.file || held.get(id)?.fileId === t.fileId) return;
+  try {
+    const file = normalizeAudioFile(t.file, t.codec);
+    held.set(id, { fileId: t.fileId, blob: new Blob([await file.arrayBuffer()], { type: file.type }) });
+  } catch { return; }
+  const keep = new Set([playerTrackId, queue.peekNext(), id]);
+  for (const k of [...held.keys()]) if (held.size > 3 && !keep.has(k)) held.delete(k);
+}
+
 /** The highlighted row and its progress bar follow the song that's playing, like a music player's now-playing row. */
 function followPlayback(id) {
   const t = tracks.get(id);
@@ -918,7 +933,8 @@ async function startPlayback(id) {
     const old = playerUrl;
     if (t.file) {
       t.file = normalizeAudioFile(t.file, t.codec);
-      playerUrl = URL.createObjectURL(t.file);
+      const copy = held.get(id);
+      playerUrl = URL.createObjectURL(copy && copy.fileId === t.fileId ? copy.blob : t.file);
       player.src = playerUrl;
     } else {
       // Stream synced audio so it starts before the whole file arrives.
@@ -937,6 +953,8 @@ async function startPlayback(id) {
   queue.jump(id);
   updateMediaSession(t);
   followPlayback(id);
+  const upNext = queue.peekNext();
+  if (upNext) warmAudio(upNext); // ready before this song ends, so the move on is instant and survives the app sleeping
   try {
     await player.play();
     return true;
@@ -1952,9 +1970,13 @@ async function saveNow() {
   for (const a of albums.values()) { const sig = albumSig(a); if (a.sig !== sig) { a.sig = sig; a.updatedAt = Date.now(); } }
   schedulePush();
   try {
+    // Covers are saved as raw bytes, not Blobs: iOS can invalidate a Blob read back from IndexedDB once the app has
+    // been in the background, which left every cover broken. Bytes always come back intact.
+    const covers = new Map();
+    for (const a of albums.values()) if (a.art) { try { covers.set(a.id, a.art.bytes ||= new Uint8Array(await a.art.blob.arrayBuffer())); } catch {} }
     await idb("kv", "readwrite", (s) => s.put({
       v: 1, current: { ...current }, deleted,
-      albums: [...albums.values()].map((a) => ({ ...a, art: a.art ? { blob: a.art.blob, hash: a.art.hash } : null })),
+      albums: [...albums.values()].map((a) => ({ ...a, art: covers.has(a.id) ? { data: covers.get(a.id), type: a.art.blob.type || "image/jpeg", hash: a.art.hash } : null })),
       tracks: [...tracks.values()].map(({ file, ...t }) => t),
     }, "state"));
     const stored = await idb("files", "readonly", (s) => s.getAllKeys());
@@ -1966,6 +1988,7 @@ async function saveNow() {
   } catch { /* storage full or blocked (private mode): the session still works, it just won't be kept */ }
 }
 async function restore() {
+  let migrated = false;
   try {
     const state = await idb("kv", "readonly", (s) => s.get("state"));
     if (!state?.tracks?.length) return;
@@ -1982,13 +2005,17 @@ async function restore() {
       const art = a.art;
       a.art = null;
       albums.set(a.id, a);
-      if (art?.blob) setArt(a, art.blob, art.hash || null);
+      if (art?.data) setArt(a, new Blob([art.data], { type: art.type || "image/jpeg" }), art.hash || null);
+      else if (art?.blob) { // saved by an older version as a Blob: copy it into memory now, and save it as bytes
+        try { setArt(a, new Blob([await art.blob.arrayBuffer()], { type: art.blob.type || "image/jpeg" }), art.hash || null); migrated = true; } catch { migrated = true; } // unreadable: no cover rather than a broken one
+      }
     }
     if (!albums.size) return;
     current.album = albums.has(state.current?.album) ? state.current.album : [...albums.keys()][0];
     current.track = tracks.has(state.current?.track) ? state.current.track : wide.matches || isSingle() ? albums.get(current.album).trackIds[0] : null;
     renderAll();
     setView(wide.matches ? "album" : "shelf");
+    if (migrated) saveNow();
   } catch {}
 }
 // ---------------------------------------------------------------- account sync
