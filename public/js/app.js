@@ -852,9 +852,14 @@ function tickPlay() {
   }
   playRaf = player.paused ? 0 : requestAnimationFrame(tickPlay);
 }
-player.addEventListener("play", () => { setPlayButton(true); cancelAnimationFrame(playRaf); tickPlay(); });
+const onPlaying = () => { setPlayButton(true); cancelAnimationFrame(playRaf); tickPlay(); };
+player.addEventListener("play", onPlaying);
+player.addEventListener("playing", onPlaying); // a new song while already playing fires this, not "play"
 player.addEventListener("pause", () => { setPlayButton(false); tickPlay(); });
 player.addEventListener("ended", () => {
+  // Only a song that played to its end moves on. A stray "ended" from a pause must never skip ahead.
+  const total = tracks.get(player.dataset.track)?.duration || player.duration;
+  if (total && player.currentTime < total - 3) return;
   $(`.track[data-track-id="${player.dataset.track}"]`)?.style.removeProperty("--play");
   advance();
 });
@@ -862,6 +867,14 @@ player.addEventListener("ended", () => {
 // ---------------------------------------------------------------- the queue: linear playback, shuffle, repeat, lock screen
 // One <audio> element plays everything, so the OS treats Taglet as a music app: it keeps playing with the screen
 // off or the app in the background, and the lock screen shows the song, artists, album and cover below.
+
+/** The highlighted row and its progress bar follow the song that's playing, like a music player's now-playing row. */
+function followPlayback(id) {
+  const t = tracks.get(id);
+  if (!t || t.albumId !== current.album) return;
+  $$(".track").forEach((li) => { const on = li.dataset.trackId === id; li.setAttribute("aria-current", String(on)); if (!on) li.style.removeProperty("--play"); });
+  if (!$("#inspector").contains(document.activeElement)) { current.track = id; renderInspector(); } // not while you're typing in it
+}
 
 /** Songs in an album that have audio to play, in album order. */
 const playable = (a) => a.trackIds.filter((id) => { const t = tracks.get(id); return t && (t.file || t.cloud); });
@@ -923,6 +936,7 @@ async function startPlayback(id) {
   }
   queue.jump(id);
   updateMediaSession(t);
+  followPlayback(id);
   try {
     await player.play();
     return true;
@@ -974,31 +988,49 @@ function renderTransport() {
 
 // What the phone's own player (lock screen, Control Center, car, headphones) shows and can do.
 const ms = "mediaSession" in navigator ? navigator.mediaSession : null;
-const artUrls = new WeakMap(); // cover blob -> a URL of its own, so changing the cover on screen can't pull it from the lock screen
+// iOS won't draw a blob: URL as lock-screen artwork, so the cover goes in as a small data: URL instead.
+const artData = new Map(); // cover blob -> Promise of a 512px JPEG data: URL
 function mediaArtwork(a) {
-  if (!a?.art) return [];
-  const blob = a.art.blob;
-  if (!blob) return a.art.url ? [{ src: a.art.url, sizes: "1200x1200", type: "image/jpeg" }] : [];
-  if (!artUrls.has(blob)) artUrls.set(blob, URL.createObjectURL(blob));
-  return [{ src: artUrls.get(blob), sizes: "1200x1200", type: blob.type || "image/jpeg" }];
+  const blob = a?.art?.blob;
+  if (!blob) return null;
+  if (!artData.has(blob)) {
+    artData.set(blob, (async () => {
+      const bmp = await createImageBitmap(blob);
+      const c = document.createElement("canvas");
+      c.width = c.height = 512;
+      c.getContext("2d").drawImage(bmp, 0, 0, 512, 512); // covers are saved square
+      bmp.close?.();
+      return c.toDataURL("image/jpeg", 0.88);
+    })().catch(() => null));
+  }
+  return artData.get(blob);
 }
 function updateMediaSession(t) {
   if (!ms || typeof MediaMetadata === "undefined") return;
   const a = albums.get(t.albumId);
-  ms.metadata = new MediaMetadata({ title: t.tags.title || "Untitled", artist: joinArtists(t.tags.artists), album: a?.title || "", artwork: mediaArtwork(a) });
+  const set = (src) => { ms.metadata = new MediaMetadata({ title: t.tags.title || "Untitled", artist: joinArtists(t.tags.artists), album: a?.title || "", artwork: src ? [{ src, sizes: "512x512", type: "image/jpeg" }] : [] }); };
+  set("");
+  mediaArtwork(a)?.then((src) => { if (src && playerTrackId === t.id) set(src); });
+  claimTransportControls();
 }
-function syncPosition() {
-  if (!ms?.setPositionState || !Number.isFinite(player.duration) || !player.duration) return;
-  try { ms.setPositionState({ duration: player.duration, playbackRate: player.playbackRate || 1, position: Math.min(player.currentTime, player.duration) }); } catch {}
-}
-if (ms) {
+/** Previous/Next and the scrubber, and no 10-second skips: iOS shows the skips instead when those handlers are absent. */
+function claimTransportControls() {
+  if (!ms) return;
   const handle = (action, fn) => { try { ms.setActionHandler(action, fn); } catch {} };
   handle("play", () => resumePlayer());
   handle("pause", () => player.pause());
   handle("previoustrack", () => actions.qPrev());
   handle("nexttrack", () => actions.qNext());
   handle("seekto", (d) => { if (Number.isFinite(d.seekTime)) { player.currentTime = d.seekTime; syncPosition(); } });
-  // No seekbackward/seekforward on purpose: iOS swaps Previous and Next for 10-second skips when they exist.
+  handle("seekbackward", null);
+  handle("seekforward", null);
+}
+function syncPosition() {
+  if (!ms?.setPositionState || !Number.isFinite(player.duration) || !player.duration) return;
+  try { ms.setPositionState({ duration: player.duration, playbackRate: player.playbackRate || 1, position: Math.min(player.currentTime, player.duration) }); } catch {}
+}
+if (ms) {
+  claimTransportControls();
   player.addEventListener("play", () => { ms.playbackState = "playing"; syncPosition(); });
   player.addEventListener("pause", () => { if (!player.ended) ms.playbackState = "paused"; syncPosition(); });
   for (const ev of ["loadedmetadata", "durationchange", "seeked", "ratechange"]) player.addEventListener(ev, syncPosition);
