@@ -5,6 +5,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 import * as auth from "./auth.js";
+import * as collab from "./collab.js";
 import { logEvent, TEAM_COOKIE } from "./events.js";
 
 const SHARE_TTL = 30 * 24 * 60 * 60; // seconds
@@ -86,7 +87,7 @@ export default {
     const s = url.pathname.match(/^\/s\/([A-Za-z0-9]{12})\/?$/);
     if (s && req.method === "GET") return sharePage(req, env, s[1]);
     if (url.pathname.startsWith("/api/fetch/")) return fetchLink(req, env, url);
-    if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/account/")) return account(req, env, url);
+    if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/account/") || url.pathname.startsWith("/api/collab/")) return account(req, env, url);
     if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
     return env.ASSETS.fetch(req);
   },
@@ -176,6 +177,8 @@ async function share(req, env, url) {
 //   GET/PUT /api/account/library                   the synced library (albums, tags, order, cover references)
 //   GET/PUT /api/account/cover/:sha256             cover images, stored once each
 //   GET/PUT /api/account/audio/:trackId            the song's audio in R2 (1 GB per account, 8 GB in all, 200 MB per file)
+//   (audio and cover also take ?owner=<user id> to read a collaborator's album, if an active grant allows it)
+//   Collaborators (collab.js): POST /api/collab/invite, accept, revoke, leave · GET /api/collab/people, shared · PUT /api/collab/shared
 async function account(req, env, url) {
   const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...extra } });
   const withCookie = (res, c) => { res.headers.append("set-cookie", c); return res; };
@@ -202,14 +205,20 @@ async function account(req, env, url) {
     if (cover) {
       const user = await auth.currentUser(env, req);
       if (!user) return json({ error: "signed_out" }, 401);
+      const owner = url.searchParams.get("owner");
+      if (owner && owner !== user.id) {
+        // Someone else's cover: a listener or editor of an album that uses it, or an editor adding a new one.
+        if (method === "GET" ? !(await collab.canReadCover(env, user.id, owner, cover)) : !(await collab.isEditorOf(env, user.id, owner))) return json({ error: "forbidden" }, 403);
+      }
+      const coverUser = owner && owner !== user.id ? { id: owner } : user;
       if (method === "GET") {
-        const data = await auth.getCover(env, user, cover);
+        const data = await auth.getCover(env, coverUser, cover);
         return data ? new Response(new Uint8Array(data), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } }) : new Response(null, { status: 204 });
       }
       if (method === "PUT") {
         const origin = req.headers.get("origin");
         if (origin && origin !== url.origin) return json({ error: "forbidden" }, 403);
-        await auth.putCover(env, user, cover, await req.arrayBuffer());
+        await auth.putCover(env, coverUser, cover, await req.arrayBuffer());
         return new Response(null, { status: 204 });
       }
     }
@@ -220,17 +229,21 @@ async function account(req, env, url) {
       // R2's free tier is 10 GB, 1M writes and 10M reads a month. These daily limits keep every month under it.
       if (!(await take(env, `audio-${method}:${user.id}`, 1, method === "PUT" ? 300 : 1000)) || !(await take(env, `audio-${method}`, 1, method === "PUT" ? 10000 : 100000)))
         return json({ error: "rate_limited" }, 429);
+      // Streaming a song from someone else's account needs an active grant on an album that holds it.
+      const owner = url.searchParams.get("owner");
+      const source = owner && owner !== user.id ? { id: owner } : user;
+      if (source !== user && (method !== "GET" || !(await collab.canReadTrack(env, user.id, owner, audio)))) return json({ error: "forbidden" }, 403);
       if (method === "GET") {
         const requestedMime = url.searchParams.get("mime") || "";
         const mime = AUDIO_MIMES.has(requestedMime) ? requestedMime : "application/octet-stream";
         const header = req.headers.get("range");
         let range = null, size = 0;
         if (header) {
-          size = await auth.audioSize(env, user, audio);
+          size = await auth.audioSize(env, source, audio);
           range = parseByteRange(header, size);
           if (range?.invalid) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
         }
-        const obj = await auth.getAudio(env, user, audio, range);
+        const obj = await auth.getAudio(env, source, audio, range);
         if (!obj) return new Response(null, { status: 404 });
         const total = range ? range.total : obj.size;
         const headers = { "Content-Type": mime, "Content-Length": String(obj.size), "Accept-Ranges": "bytes", "Cache-Control": "private, no-store" };
@@ -246,6 +259,14 @@ async function account(req, env, url) {
         return new Response(null, { status: 204 });
       }
     }
+    if (route === "collab/shared" && method === "GET") {
+      const user = await auth.currentUser(env, req);
+      return user ? json(await collab.readShared(env, user)) : json({ error: "signed_out" }, 401);
+    }
+    if (route === "collab/people" && method === "GET") {
+      const user = await auth.currentUser(env, req);
+      return user ? json(await collab.listPeople(env, user, url.searchParams.get("albumId"))) : json({ error: "signed_out" }, 401);
+    }
     if (route === "account/library" && method === "GET") {
       const user = await auth.currentUser(env, req);
       return user ? json(await auth.readLibrary(env, user)) : json({ error: "signed_out" }, 401);
@@ -256,6 +277,26 @@ async function account(req, env, url) {
     if (route === "account/library" && method === "PUT") {
       const user = await auth.currentUser(env, req);
       return user ? json(await auth.writeLibrary(env, user, body)) : json({ error: "signed_out" }, 401);
+    }
+    if (route.startsWith("collab/")) {
+      const user = await auth.currentUser(env, req);
+      if (!user) return json({ error: "signed_out" }, 401);
+      if (route === "collab/invite" && method === "POST") {
+        if (!(await take(env, `collab-invite:${user.id}`, 1, 40))) return json({ error: "rate_limited" }, 429);
+        const made = await collab.createInvite(env, user, body);
+        logEvent(env, req, "collab_invite", body.role === "edit" ? "edit" : "view");
+        return json({ ...made, url: `${url.origin}/?join=${made.token}` });
+      }
+      if (route === "collab/accept" && method === "POST") {
+        if (!(await take(env, `collab-accept:${ip}`, 1, 30, "hour"))) return json({ error: "rate_limited" }, 429);
+        const got = await collab.accept(env, user, body.token);
+        logEvent(env, req, "collab_join", got.role);
+        return json(got);
+      }
+      if (route === "collab/revoke" && method === "POST") return json(await collab.revoke(env, user, body));
+      if (route === "collab/leave" && method === "POST") return json(await collab.leave(env, user, body));
+      if (route === "collab/shared" && method === "PUT") return json(await collab.writeShared(env, user, body));
+      return json({ error: "not_found" }, 404);
     }
     if (route === "auth/email/start") {
       if (!(await take(env, `login-ip:${ip}`, 1, 10, "hour"))) return json({ error: "rate_limited" }, 429);

@@ -27,7 +27,7 @@ async function api(path, { method = "GET", body } = {}) {
 
 /* ── Sync ── */
 
-async function push() {
+async function push({ audio = true } = {}) {
   if (!me) return;
   try {
     const lib = ui.getLibrary();
@@ -41,6 +41,8 @@ async function push() {
     }
     ls.set(COVERS_SENT, JSON.stringify([...sent].slice(-500)));
     await api("/api/account/library", { method: "PUT", body: lib });
+    await pushShared(); // changes made to albums other people shared with us
+    if (!audio) return;
     // Then the audio, so every song plays on every device. The library goes first so the songs exist server-side.
     for (const id of ui.pendingAudio()) {
       const file = await ui.cloudFile(id);
@@ -55,6 +57,30 @@ async function push() {
   } catch {}
 }
 let fullWarned = false;
+
+/* ── Albums shared with us (collaborators) ── */
+
+/** Raw calls for the collaborator sheet in app.js. */
+export const collabApi = api;
+/** Sends pending changes now, so an album is in the account before someone is invited to it. */
+export const pushNow = () => push({ audio: false });
+/** Fetches the albums shared with us right away (used after accepting an invite). */
+export const refreshShared = () => pullShared();
+
+async function pullShared() {
+  if (!me || !ui.applyShared) return;
+  try { await ui.applyShared((await api("/api/collab/shared")).shared || []); } catch {}
+}
+async function pushShared() {
+  if (!ui.sharedEdits) return;
+  for (const e of ui.sharedEdits()) {
+    try {
+      if (e.coverBlob && e.cover && e.cover !== e.knownCover) await fetch(`/api/account/cover/${e.cover}?owner=${e.ownerId}`, { method: "PUT", credentials: "same-origin", body: e.coverBlob });
+      await api("/api/collab/shared", { method: "PUT", body: { ownerId: e.ownerId, album: e.album, tracks: e.tracks } });
+      ui.markSharedPushed(e.album.id, e.album.updatedAt, e.cover);
+    } catch (err) { if (err.message === "forbidden") await pullShared(); } // access was taken back
+  }
+}
 export function schedulePush() { if (!me) return; clearTimeout(pushTimer); pushTimer = setTimeout(push, 1500); }
 
 // Album by album, the newer copy wins; deletions carry a time too, so removing an album on one device sticks.
@@ -66,6 +92,7 @@ async function pull() {
     const covers = {};
     for (const a of remote.albums || []) if (a.cover) covers[a.cover] = () => fetch(`/api/account/cover/${a.cover}`, { credentials: "same-origin" }).then((r) => (r.status === 200 ? r.blob() : null));
     await ui.applyLibrary(remote, covers);
+    await pullShared();
     lastPull = Date.now();
     await push();
   })().catch(() => {}).finally(() => { pulling = null; });

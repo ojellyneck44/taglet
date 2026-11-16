@@ -23,6 +23,11 @@ export async function authDb(env) {
       db.prepare("CREATE TABLE IF NOT EXISTS user_data (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at INTEGER NOT NULL)"),
       db.prepare("CREATE TABLE IF NOT EXISTS covers (user_id TEXT NOT NULL, hash TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (user_id, hash))"),
       db.prepare("CREATE TABLE IF NOT EXISTS audio (user_id TEXT NOT NULL, track_id TEXT NOT NULL, size INTEGER NOT NULL, PRIMARY KEY (user_id, track_id))"),
+      // Collaborators (see collab.js): single-use invites, and the grants they turn into.
+      db.prepare("CREATE TABLE IF NOT EXISTS collab_invites (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, owner_id TEXT NOT NULL, album_id TEXT NOT NULL, role TEXT NOT NULL, grant_days INTEGER, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_invites_owner ON collab_invites (owner_id, album_id)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS collaborators (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, album_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, expires_at INTEGER, created_at INTEGER NOT NULL, UNIQUE (owner_id, album_id, user_id))"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_collab_user ON collaborators (user_id)"),
     ]);
     ready = true;
   }
@@ -268,6 +273,8 @@ export async function deleteAccount(env, user) {
     db.prepare("DELETE FROM user_data WHERE user_id = ?").bind(user.id),
     db.prepare("DELETE FROM covers WHERE user_id = ?").bind(user.id),
     db.prepare("DELETE FROM audio WHERE user_id = ?").bind(user.id),
+    db.prepare("DELETE FROM collaborators WHERE owner_id = ? OR user_id = ?").bind(user.id, user.id),
+    db.prepare("DELETE FROM collab_invites WHERE owner_id = ?").bind(user.id),
     db.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
   ]);
 }
@@ -309,6 +316,18 @@ export async function readLibrary(env, user) {
 
 export async function writeLibrary(env, user, input) {
   const data = cleanLibrary(input);
+  // A collaborator may have edited an album since this device last synced. If so, their newer version stays.
+  const before = await (await authDb(env)).prepare("SELECT data FROM user_data WHERE user_id = ?").bind(user.id).first();
+  if (before) {
+    const old = JSON.parse(before.data);
+    for (const e of old.albums || []) {
+      if (!(e.collabEditAt > 0)) continue;
+      const i = data.albums.findIndex((a) => a.id === e.id);
+      if (i < 0 || data.albums[i].updatedAt >= e.collabEditAt) continue;
+      data.albums[i] = e;
+      data.tracks = [...data.tracks.filter((t) => t.albumId !== e.id), ...(old.tracks || []).filter((t) => t.albumId === e.id)];
+    }
+  }
   const text = JSON.stringify(data);
   if (text.length > 1_500_000) throw { status: 413, error: "library_too_big" };
   const updatedAt = Date.now();

@@ -186,25 +186,20 @@ body.dragging:not([data-view="welcome"]) .dropveil { opacity: 1; }
 .issues li.ok svg { color: var(--accent); }
 .issues .btn { margin-left: auto; }
 
-.tracks-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s2); }
+.tracks-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: var(--s1); margin-bottom: var(--s2); }
 .tracks-head h2 { font-size: var(--t-lg); }
-/* Playback bar: shuffle, previous, play, next, repeat. Controls the queue even while you edit other songs. */
-.transport { display: flex; align-items: center; justify-content: center; gap: var(--s2); margin: 0 0 var(--s3); }
-.t-btn { position: relative; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; padding: 0; background: transparent; color: var(--paper-2); cursor: pointer; transition: background-color .15s, color .15s, transform var(--dur-fast) var(--ease-out); }
-.t-btn:hover:not(:disabled) { color: var(--paper); background: rgba(243,236,226,.09); }
-.t-btn:active:not(:disabled) { transform: scale(.92); }
-.t-btn:disabled { opacity: .35; cursor: default; }
-.t-btn svg { width: 22px; height: 22px; }
-.t-btn[aria-pressed="true"] { color: var(--accent); }
-.t-btn[aria-pressed="true"]::after { content: ""; position: absolute; bottom: 5px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor; }
-.t-main { width: 52px; height: 52px; background: var(--accent); color: #04201B; }
-.t-main:hover:not(:disabled) { background: var(--accent); color: #04201B; filter: brightness(1.08); }
-.t-main svg { width: 24px; height: 24px; }
-.t-main[data-icon="play"] svg { transform: translateX(1px); }
-.t-btn .one { display: none; position: absolute; top: 9px; right: 8px; font: 700 9px/1 var(--font-mono); }
-.t-btn[data-mode="one"] .one { display: block; }
+/* Shuffle and repeat: two small toggles beside the "Tracks" heading. Play, skip and rewind live in the phone's own player. */
+.play-modes { display: flex; align-items: center; margin-right: auto; margin-left: var(--s1); }
+.mode-btn { position: relative; width: 40px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; padding: 0; background: transparent; color: var(--paper-3); cursor: pointer; transition: color .15s, transform var(--dur-fast) var(--ease-out); }
+.mode-btn:hover { color: var(--paper); }
+.mode-btn:active { transform: scale(.9); }
+.mode-btn svg { width: 20px; height: 20px; }
+.mode-btn[aria-pressed="true"] { color: var(--accent); }
+.mode-btn[aria-pressed="true"]::after { content: ""; position: absolute; bottom: 6px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor; }
+.mode-btn .one { display: none; position: absolute; top: 11px; right: 7px; font: 700 8px/1 var(--font-mono); }
+.mode-btn[data-mode="one"] .one { display: block; }
 .track[data-playing="true"] .track-main strong { color: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .t-btn { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .mode-btn { transition: none; } }
 .tracks { list-style: none; margin: 0; padding: 0; }
 .track {
   display: grid; grid-template-columns: 28px 34px 30px minmax(0, 1fr) auto 34px; align-items: center; gap: var(--s2);
@@ -465,7 +460,7 @@ body[data-single] .album-title,
 body[data-single] .field:has([data-album="albumArtist"]),
 body[data-single] .switch:has([data-album="compilation"]),
 body[data-single] .tracks-head,
-body[data-single] .transport,
+body[data-single] .play-modes,
 body[data-single] .tracks,
 body[data-single] .field:has([data-track="track"]),
 body[data-single] .field:has([data-track="disc"]),
@@ -619,3 +614,28 @@ textarea.autosize { display: block; resize: none; overflow: hidden; field-sizing
 .welcome-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 var(--s4); margin: var(--s4) 0 0; font-size: var(--t-sm); }
 .welcome-links a { color: var(--paper-3); text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
 .welcome-links a:hover { color: var(--paper); text-decoration: underline; }
+
+/* Collaborators: the note on a shared album, and the people tab in the Share sheet. */
+.shared-note { display: flex; align-items: center; gap: var(--s3); margin: 0 0 var(--s4); padding: var(--s3) var(--s4); border-radius: var(--r-row); background: var(--accent-soft); color: var(--paper); }
+.shared-note[hidden] { display: none; }
+.shared-note svg { width: 22px; height: 22px; flex: none; color: var(--accent); }
+.shared-note strong { display: block; font-weight: 600; font-size: var(--t-sm); }
+.shared-note > span { flex: 1; min-width: 0; }
+body[data-shared] .album-tools { display: none; }
+.shared-note small { display: block; color: var(--paper-2); font-size: var(--t-xs); }
+.tabs { display: flex; gap: var(--s1); padding: 3px; margin: 0 0 var(--s4); border-radius: 999px; background: rgba(243,236,226,.07); }
+.tab { flex: 1; min-height: 40px; border: 0; border-radius: 999px; background: transparent; color: var(--paper-2); font-weight: 600; cursor: pointer; transition: background-color .15s, color .15s; }
+.tab[aria-selected="true"] { background: rgba(243,236,226,.14); color: var(--paper); }
+#sharePeoplePane .seg, #sharePeoplePane .field { margin-top: var(--s4); }
+.people-h { margin: var(--s5) 0 var(--s1); font-size: var(--t-sm); color: var(--paper-2); font-weight: 600; }
+.people { list-style: none; margin: 0; padding: 0; }
+.people li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2); min-height: 56px; border-top: 1px solid var(--line); }
+.people li:first-child { border-top: 0; }
+.people strong { display: block; font-weight: 600; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people small { display: block; color: var(--paper-2); font-size: var(--t-xs); }
+.people .btn { min-height: 40px; }
+/* On an album you were invited to, whatever you can't change goes away. Listeners can't touch the fields at all (inert). */
+body[data-shared] [data-act="share"], body[data-shared] [data-act="addMenu"], body[data-shared] [data-act="remove"], body[data-shared] [data-act="replaceAudio"],
+body[data-shared] [data-act="trackExport"], body[data-shared] [data-act="export"], body[data-shared] .check-tag, body[data-shared] .issues { display: none; }
+body[data-shared="view"] .grip, body[data-shared="view"] [data-act="renumber"] { display: none; }
+body[data-shared="view"] .art-edit, body[data-shared="view"] .art-empty { display: none; }

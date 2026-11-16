@@ -18,7 +18,7 @@ import { createQueue } from "./queue.js";
 import { buildKey, fillBatch, joinArtists, safeName, splitArtists, zipParts } from "./tags.js";
 import { connect, newCode, cleanCode, prettyCode } from "./link.js";
 import { b64url, unb64url, newKeyBytes, importKey, seal, shareUrl } from "./sharekit.js";
-import { initAccount, onAccountChange, openAccount, schedulePush, syncCardHidden, hideSyncCard, accountAvailable } from "./account.js";
+import { initAccount, onAccountChange, openAccount, schedulePush, syncCardHidden, hideSyncCard, accountAvailable, collabApi, pushNow, refreshShared, currentUser } from "./account.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -470,8 +470,8 @@ function renderShelf() {
       ${a.art ? `<img class="thumb" src="${a.art.url}" alt="">` : `<span class="thumb">${icon("image")}</span>`}
       ${singleAlbum(a)
         ? `<span><strong>${esc(tracks.get(a.trackIds[0]).tags.title || "Untitled track")}</strong><small>Single · ${esc(joinArtists(tracks.get(a.trackIds[0]).tags.artists) || "No artist")}</small></span>`
-        : `<span><strong>${esc(a.title || "Untitled album")}</strong><small>${esc(a.albumArtist || "No album artist")} · ${a.trackIds.length} tracks</small></span>`}
-      <span class="dot ${ok ? "ok" : ""}" title="${ok ? "Ready for Spotify" : "Needs a fix"}"></span><span class="sr-only">${ok ? "Ready for Spotify" : "Needs a fix"}</span>
+        : `<span><strong>${esc(a.title || "Untitled album")}</strong><small>${a.shared ? `Shared by ${esc(a.shared.owner)} · ${a.shared.role === "edit" ? "can edit" : "listen"}` : `${esc(a.albumArtist || "No album artist")} · ${a.trackIds.length} tracks`}</small></span>`}
+      ${a.shared ? `<span class="sr-only">Shared with you</span>` : `<span class="dot ${ok ? "ok" : ""}" title="${ok ? "Ready for Spotify" : "Needs a fix"}"></span><span class="sr-only">${ok ? "Ready for Spotify" : "Needs a fix"}</span>`}
     </button></li>`;
   }).join("");
   updateExport();
@@ -482,7 +482,7 @@ function renderShelf() {
 function renderAlbum() {
   const a = albums.get(current.album);
   $("#album").hidden = !a;
-  if (!a) return;
+  if (!a) { renderAccess(null); return; }
   for (const input of $$("[data-album]")) {
     const v = a[input.dataset.album];
     if (input.type === "checkbox") input.checked = !!v;
@@ -497,10 +497,11 @@ function renderAlbum() {
   renderCheck(a);
   const single = singleAlbum(a);
   document.body.toggleAttribute("data-single", single);
-  $("#deleteLabel").textContent = single ? "Delete track" : "Delete album";
+  $("#deleteLabel").textContent = a.shared ? "Leave" : single ? "Delete track" : "Delete album";
   $("#shareLabel").textContent = a.share ? "Shared" : "Share";
   $("#artBtn").setAttribute("aria-label", single ? "Change the track’s cover art" : "Change the album’s cover art");
   $("#backToAlbum").textContent = a.title || "Album";
+  renderAccess(a);
 }
 
 function renderTracks(a) {
@@ -653,6 +654,37 @@ const actions = {
   addToAlbum: () => { pickInto = current.album; $("#pickAudio").click(); },
   fromLink: (btn) => { const form = $("#linkImportDialog [data-link-form]"); form.toggleAttribute("data-into", btn?.dataset.linkTarget === "album"); $("#albumLink").value = ""; openSheet($("#linkImportDialog")); $("#albumLink").focus(); },
   share: () => openShare(),
+  shareTab: (btn) => showShareTab(btn.dataset.tab),
+  collabInvite: async (btn) => {
+    const a = albums.get(current.album);
+    if (!a || a.shared) return;
+    btn.disabled = true;
+    try {
+      await pushNow(); // the album has to be in the account before anyone can be invited to it
+      const role = $('input[name="collabRole"]:checked').value, days = $("#collabDays").value;
+      const r = await collabApi("/api/collab/invite", { method: "POST", body: { albumId: a.id, role, days: days ? +days : null } });
+      collabInviteUrl = r.url;
+      $("#collabUrl").value = r.url;
+      $("#collabLink").hidden = false;
+      $('[data-act="collabNative"]').hidden = !navigator.share;
+      $("#collabLinkNote").textContent = `Works once, for 7 days. ${days ? `Their access lasts ${days} days from the moment they open it.` : "Their access has no end date until you remove them."}`;
+      schedulePush(); // gets the songs' audio up to the account, so they can be played
+      await loadPeople(a);
+    } catch (err) {
+      toast(err.message === "not_synced" ? "This album isn’t in your account yet. Wait a moment for it to sync, then try again." : err.message === "too_many_invites" ? "You already have 20 invites waiting. Withdraw some first." : "Couldn’t make the invite. Check your connection and try again.", "err");
+    }
+    btn.disabled = false;
+  },
+  collabCopy: async (btn) => { try { await navigator.clipboard.writeText(collabInviteUrl); confirmCopied(btn); } catch { toast("Couldn’t copy. Select the link and copy it.", "err"); } },
+  collabNative: () => { const a = albums.get(current.album); navigator.share?.({ title: `Join “${a?.title || "an album"}” on Taglet`, url: collabInviteUrl }).catch(() => {}); },
+  collabRevoke: async (btn) => {
+    const a = albums.get(current.album);
+    try {
+      await collabApi("/api/collab/revoke", { method: "POST", body: btn.dataset.person ? { personId: btn.dataset.person } : { inviteId: btn.dataset.invite } });
+      toast(btn.dataset.person ? "Their access is removed." : "Invite withdrawn.");
+    } catch { toast("Couldn’t do that right now. Try again.", "err"); }
+    if (a) loadPeople(a);
+  },
   account: () => { $("#tintMenu").hidden = true; openAccount(); },
   syncLater: () => { hideSyncCard(); renderSyncCard(); },
   shareCreate: () => publishShare(albums.get(current.album)),
@@ -662,6 +694,7 @@ const actions = {
   deleteAlbum: () => {
     const a = albums.get(current.album);
     if (!a) return;
+    if (a.shared) { leaveShared(a); return; }
     const gone = a.trackIds.map((id) => tracks.get(id));
     const at = [...albums.keys()].indexOf(a.id);
     const name = singleAlbum(a) ? gone[0].tags.title || "Untitled track" : a.title || "Untitled album";
@@ -714,17 +747,8 @@ const actions = {
     const t = tracks.get(current.track);
     if (!t) return;
     if (playerTrackId === t.id && player.getAttribute("src") && !player.ended) { if (player.paused) await resumePlayer(); else player.pause(); return; }
-    if (!t.file && !t.cloud && !(await ensureFile(t))) { toast("This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }
+    if (!t.file && !t.cloud && !(await ensureFile(t))) { toast(t.ownerId ? "The owner hasn’t uploaded this song’s audio yet." : "This song’s audio isn’t in your account yet. Add the file here to play it.", "err"); return; }
     await playFrom(t.albumId, t.id);
-  },
-  albumPlay: async () => {
-    const a = albums.get(current.album);
-    if (!a) return;
-    if (queueAlbum === a.id && playerTrackId && player.getAttribute("src") && !player.ended) { if (player.paused) await resumePlayer(); else player.pause(); return; }
-    const list = playable(a);
-    if (!list.length) { toast("None of these songs has audio here yet. Add the files to play them.", "err"); return; }
-    // Press play on the first song and it runs to the last. With shuffle on, any song can open.
-    await playFrom(a.id, queue.shuffle ? list[Math.floor(Math.random() * list.length)] : list[0]);
   },
   qNext: async () => { const id = queue.next(false); if (id) await startPlayback(id); },
   qPrev: async () => {
@@ -940,7 +964,7 @@ async function startPlayback(id) {
       // Stream synced audio so it starts before the whole file arrives.
       const mime = LOSSLESS.test(t.codec || "") ? "audio/mpeg" : audioMime(t.codec, "application/octet-stream");
       playerUrl = "";
-      player.src = `/api/account/audio/${t.id}?mime=${encodeURIComponent(mime)}`;
+      player.src = `/api/account/audio/${t.id}?mime=${encodeURIComponent(mime)}${t.ownerId ? `&owner=${t.ownerId}` : ""}`;
     }
     if (old) URL.revokeObjectURL(old);
     playerTrackId = id;
@@ -989,18 +1013,15 @@ async function advance() {
   setPlayButton(false);
 }
 
+/** The shuffle and repeat toggles beside the Tracks heading. */
 function renderTransport() {
-  const bar = $("#transport");
-  if (!bar) return;
-  const main = $('[data-act="albumPlay"]', bar), shuffle = $('[data-act="qShuffle"]', bar), repeat = $('[data-act="qRepeat"]', bar);
-  const on = !player.paused && !!queueAlbum && queueAlbum === current.album;
-  if (main.dataset.icon !== (on ? "pause" : "play")) swapIcon(main, on ? "pause" : "play");
-  main.setAttribute("aria-label", on ? "Pause" : "Play album");
+  const shuffle = $('[data-act="qShuffle"]'), repeat = $('[data-act="qRepeat"]');
+  if (!shuffle || !repeat) return;
   shuffle.setAttribute("aria-pressed", String(queue.shuffle));
+  shuffle.setAttribute("aria-label", queue.shuffle ? "Shuffle: on" : "Shuffle: off");
   repeat.setAttribute("aria-pressed", String(queue.repeat !== "off"));
   repeat.dataset.mode = queue.repeat;
   repeat.setAttribute("aria-label", queue.repeat === "one" ? "Repeat: this song" : queue.repeat === "all" ? "Repeat: all songs" : "Repeat: off");
-  $('[data-act="qPrev"]', bar).disabled = $('[data-act="qNext"]', bar).disabled = !queue.size;
 }
 
 // What the phone's own player (lock screen, Control Center, car, headphones) shows and can do.
@@ -1552,7 +1573,7 @@ async function runExport(mode) {
   const opts = { quality: $('input[name="quality"]:checked').value, trimSilence: $("#trimSilence").checked };
   const chosen = exportOnlyTrack
     ? [tracks.get(exportOnlyTrack)]
-    : scope === "album" && current.album ? albums.get(current.album).trackIds.map((id) => tracks.get(id)) : [...albums.values()].flatMap((a) => a.trackIds.map((id) => tracks.get(id)));
+    : scope === "album" && current.album ? albums.get(current.album).trackIds.map((id) => tracks.get(id)) : [...albums.values()].filter((a) => !a.shared).flatMap((a) => a.trackIds.map((id) => tracks.get(id)));
   exportOnlyTrack = null;
   for (const a of new Set(chosen.map((t) => albums.get(t.albumId)))) {
     if (a.art && !a.art.bytes) a.art.bytes = new Uint8Array(await a.art.blob.arrayBuffer());
@@ -1681,6 +1702,8 @@ function openShare() {
   const a = albums.get(current.album);
   if (!a) return;
   $("#shareTitle").textContent = singleAlbum(a) ? "Share track" : "Share album";
+  $("#shareTabs").hidden = !accountAvailable();
+  showShareTab("link");
   showShareState(a);
   openSheet($("#shareDialog"));
 }
@@ -1702,6 +1725,54 @@ function showShareState(a) {
     : `Works until ${until}. Updating it restarts the 30 days.`;
   $("#shareUpdate").classList.toggle("primary", stale);
   $("#shareUpdate").classList.toggle("ghost", !stale);
+}
+
+// ---------------------------------------------------------------- collaborators: invite people to an album
+
+let collabInviteUrl = "";
+function showShareTab(tab) {
+  $$("#shareTabs .tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  $("#shareLinkPane").hidden = tab !== "link";
+  $("#sharePeoplePane").hidden = tab !== "people";
+  if (tab === "people") renderPeople();
+}
+
+function renderPeople() {
+  const a = albums.get(current.album), user = currentUser();
+  $("#peopleSignedOut").hidden = !!user;
+  $("#peopleBody").hidden = !user;
+  $("#collabLink").hidden = true;
+  if (user && a) loadPeople(a);
+}
+
+const daysLeft = (at) => Math.max(0, Math.ceil((at - Date.now()) / 864e5));
+const when = (at) => (at == null ? "no end date" : daysLeft(at) <= 1 ? "ends today or tomorrow" : `ends in ${daysLeft(at)} days`);
+
+async function loadPeople(a) {
+  let r;
+  try { r = await collabApi(`/api/collab/people?albumId=${a.id}`); } catch { r = { people: [], invites: [] }; }
+  $("#peopleH").hidden = !r.people.length;
+  $("#invitesH").hidden = !r.invites.length;
+  $("#peopleList").innerHTML = r.people.map((p) => `<li><span><strong>${esc(p.who)}</strong><small>${p.role === "edit" ? "Can edit" : "Can listen"} · ${when(p.expiresAt)}</small></span>
+    <button class="btn ghost small danger" type="button" data-act="collabRevoke" data-person="${esc(p.id)}">Remove</button></li>`).join("");
+  $("#inviteList").innerHTML = r.invites.map((i) => `<li><span><strong>${i.role === "edit" ? "Can edit" : "Can listen"}</strong><small>${i.days ? `${i.days} days of access` : "No end date"} · link works ${daysLeft(i.expiresAt)} more days</small></span>
+    <button class="btn ghost small" type="button" data-act="collabRevoke" data-invite="${esc(i.id)}">Withdraw</button></li>`).join("");
+}
+
+/** Opening someone's invite link: remember it through sign-in, then join. */
+const JOIN_KEY = "taglet-join";
+const joinStore = { get: () => { try { return localStorage.getItem(JOIN_KEY); } catch { return null; } }, set: (v) => { try { localStorage.setItem(JOIN_KEY, v); } catch {} }, del: () => { try { localStorage.removeItem(JOIN_KEY); } catch {} } };
+async function tryJoin() {
+  const token = joinStore.get();
+  if (!token || !currentUser()) return;
+  joinStore.del();
+  try {
+    const got = await collabApi("/api/collab/accept", { method: "POST", body: { token } });
+    await refreshShared();
+    if (albums.has(got.albumId)) { showAlbum(got.albumId); toast(got.role === "edit" ? "You’re a collaborator. You can edit this album." : "You’ve joined this album. You can listen to it."); }
+  } catch (err) {
+    toast(err.message === "own_album" ? "That’s your own album, so there’s nothing to join." : err.message === "rate_limited" ? "Too many tries. Wait a few minutes and open the link again." : "This invite link has expired or was already used. Ask for a new one.", "err");
+  }
 }
 
 async function publishShare(a) {
@@ -2036,7 +2107,7 @@ async function cloudFile(id) {
 /** The song's audio as a File: already here, or downloaded once from the account and kept on this device. */
 async function ensureFile(t) {
   if (t.file) { t.file = normalizeAudioFile(t.file, t.codec); return t.file; }
-  if (!t.cloud) return null;
+  if (!t.cloud || t.ownerId) return null; // songs shared with you are streamed, not downloaded
   try {
     const r = await fetch(`/api/account/audio/${t.id}`, { credentials: "same-origin" });
     if (!r.ok) return null;
@@ -2052,9 +2123,9 @@ async function ensureFile(t) {
 
 function getLibrary() {
   return {
-    albums: [...albums.values()].map((a) => ({ id: a.id, title: a.title, albumArtist: a.albumArtist, year: a.year, genre: a.genre, compilation: !!a.compilation,
+    albums: [...albums.values()].filter((a) => !a.shared).map((a) => ({ id: a.id, title: a.title, albumArtist: a.albumArtist, year: a.year, genre: a.genre, compilation: !!a.compilation,
       trackIds: a.trackIds, cover: a.art?.hash || null, updatedAt: a.updatedAt || Date.now() })),
-    tracks: [...tracks.values()].map((t) => ({ id: t.id, albumId: t.albumId, fileName: t.file?.name || t.fileName || "", codec: t.codec,
+    tracks: [...tracks.values()].filter((t) => !t.ownerId).map((t) => ({ id: t.id, albumId: t.albumId, fileName: t.file?.name || t.fileName || "", codec: t.codec,
       sampleRate: t.sampleRate, duration: t.duration, build: t.build, tags: t.tags })),
     deleted,
   };
@@ -2096,7 +2167,107 @@ async function applyLibrary(remote, covers) {
   save();
 }
 
+// ---------------------------------------------------------------- albums shared with you (collaborators)
+// They sit in the library next to your own, marked `shared`, and never go into your own account library: the owner's
+// account is the source, the server checks the grant on every request, and an album whose access ended disappears here.
+
+/** Bring the albums other people shared with this account up to date; drop the ones whose access ended. */
+async function applyShared(list) {
+  let changedAny = false;
+  const live = new Set();
+  for (const S of list) {
+    const R = S.album;
+    live.add(R.id);
+    const L = albums.get(R.id);
+    if (L && !L.shared) continue; // never touches one of your own albums
+    const info = { ownerId: S.ownerId, owner: S.owner, role: S.role, expiresAt: S.expiresAt, grant: S.id, cover: R.cover || null };
+    if (L && JSON.stringify({ ...L.shared, cover: 0 }) !== JSON.stringify({ ...info, cover: 0 })) changedAny = true;
+    // Your own unsent edits (editors) are kept until they've been sent; otherwise the owner's copy is the truth.
+    if (L && (L.updatedAt || 0) > (L.pushedAt || 0)) { L.shared = { ...info, cover: L.shared.cover }; continue; }
+    if (L && L.updatedAt === R.updatedAt) { L.shared = info; continue; }
+    for (const rt of S.tracks || []) {
+      const lt = tracks.get(rt.id);
+      if (lt) Object.assign(lt, { tags: rt.tags, build: rt.build, albumId: R.id, cloud: !!rt.audio, ownerId: S.ownerId, duration: rt.duration, fileName: rt.fileName, codec: rt.codec, sampleRate: rt.sampleRate });
+      else tracks.set(rt.id, { ...rt, cloud: !!rt.audio, ownerId: S.ownerId, fileId: uid(), file: null });
+    }
+    if (L) for (const tid of L.trackIds) if (!R.trackIds.includes(tid)) tracks.delete(tid);
+    const a = L || { id: R.id, art: null };
+    Object.assign(a, { title: R.title, albumArtist: R.albumArtist, year: R.year, genre: R.genre, compilation: R.compilation, trackIds: R.trackIds.filter((id) => tracks.has(id)), shared: info });
+    if (!L) albums.set(a.id, a);
+    if (R.cover && a.art?.hash !== R.cover) {
+      const blob = await fetch(`/api/account/cover/${R.cover}?owner=${S.ownerId}`, { credentials: "same-origin" }).then((r) => (r.status === 200 ? r.blob() : null)).catch(() => null);
+      if (blob) setArt(a, blob, R.cover);
+    }
+    if (!R.cover && a.art) a.art = null;
+    a.updatedAt = R.updatedAt;
+    a.pushedAt = R.updatedAt;
+    a.sig = albumSig(a);
+    changedAny = true;
+  }
+  const ended = [...albums.values()].filter((a) => a.shared && !live.has(a.id));
+  for (const a of ended) { for (const tid of a.trackIds) tracks.delete(tid); albums.delete(a.id); }
+  if (ended.length) toast(ended.length === 1 ? `Your access to “${ended[0].title || "an album"}” has ended.` : `Your access to ${ended.length} shared albums has ended.`);
+  if (!changedAny && !ended.length) return;
+  if (!albums.has(current.album)) { current.album = [...albums.keys()][0] || null; current.track = null; }
+  renderAll();
+  if (!albums.size) setView("welcome");
+  else if (document.body.dataset.view === "welcome") setView(wide.matches ? "album" : "shelf");
+  save();
+}
+
+/** Albums where you're an editor and have changes the owner hasn't got yet. */
+function sharedEdits() {
+  return [...albums.values()].filter((a) => a.shared?.role === "edit" && (a.updatedAt || 0) > (a.pushedAt || 0)).map((a) => ({
+    ownerId: a.shared.ownerId, cover: a.art?.hash || null, knownCover: a.shared.cover, coverBlob: a.art?.blob || null,
+    album: { id: a.id, title: a.title, albumArtist: a.albumArtist, year: a.year, genre: a.genre, compilation: !!a.compilation, trackIds: a.trackIds, cover: a.art?.hash || null, updatedAt: a.updatedAt },
+    tracks: a.trackIds.map((id) => tracks.get(id)).map((t) => ({ id: t.id, albumId: t.albumId, tags: t.tags })),
+  }));
+}
+function markSharedPushed(id, at, cover) { const a = albums.get(id); if (a?.shared) { a.pushedAt = Math.max(a.pushedAt || 0, at); a.shared.cover = cover; save(); } }
+
+/** Signing out takes other people's albums off this device. Your own stay. */
+function dropShared() {
+  const gone = [...albums.values()].filter((a) => a.shared);
+  if (!gone.length) return;
+  for (const a of gone) { for (const tid of a.trackIds) tracks.delete(tid); albums.delete(a.id); }
+  if (!albums.has(current.album)) { current.album = [...albums.keys()][0] || null; current.track = null; }
+  renderAll();
+  if (!albums.size) setView("welcome");
+  save();
+}
+
+/** What you can do in the album on screen: listen (view) or edit, with who shared it and when that ends. */
+function renderAccess(a) {
+  const s = a?.shared;
+  if (s) document.body.dataset.shared = s.role; else delete document.body.dataset.shared;
+  const note = $("#sharedNote");
+  note.hidden = !s;
+  const view = s?.role === "view";
+  // Listeners can read everything but change nothing: `inert` takes the fields out of reach, for touch and keyboard alike.
+  $$(".album-fields, #artBtn, #inspMain .field, #inspMain .artists, #inspMain .field-row, #inspMain .row-link, #inspMain .insp-foot").forEach((el) => { el.inert = view; });
+  if (!s) return;
+  const left = s.expiresAt ? Math.max(0, Math.ceil((s.expiresAt - Date.now()) / 864e5)) : null;
+  $("#sharedWho").textContent = `Shared by ${s.owner}`;
+  $("#sharedWhat").textContent = `${view ? "You can listen" : "You can edit tags, order and cover"} · ${left == null ? "no end date" : left <= 1 ? "ends today or tomorrow" : `ends in ${left} days`}`;
+}
+
+/** Stop using an album someone shared: it leaves this device and the owner's list of people. */
+async function leaveShared(a) {
+  const ok = await collabApi("/api/collab/leave", { method: "POST", body: { personId: a.shared.grant } }).then(() => true).catch(() => false);
+  if (!ok) { toast("Couldn’t leave right now. Check your connection and try again.", "err"); return; }
+  const at = [...albums.keys()].indexOf(a.id);
+  for (const tid of a.trackIds) tracks.delete(tid);
+  albums.delete(a.id);
+  current.album = [...albums.keys()][Math.min(at, albums.size - 1)] || null;
+  current.track = null;
+  renderAll();
+  setView(!albums.size ? "welcome" : wide.matches ? "album" : "shelf", -1);
+  save();
+  toast(`You left “${a.title || "the album"}”.`);
+}
+
 onAccountChange((user) => {
+  if (!user) dropShared(); else tryJoin();
   $$('[data-act="account"]').forEach((b) => {
     if (!b.closest("#syncCard")) b.hidden = !accountAvailable();
     if (b.classList.contains("account-icon")) {
@@ -2114,10 +2285,15 @@ restore().finally(() => {
   restored = true;
   loaded.then(() => setTimeout(hideSplash, 150));
   navigator.storage?.persist?.().catch(() => {});
-  initAccount({ openSheet, toast, icon, getLibrary, applyLibrary,
+  { // An invite link (?join=…): keep it through sign-in, then join as soon as there's an account.
+    const j = new URLSearchParams(location.search).get("join");
+    if (j && /^[0-9a-f]{48}$/.test(j)) { joinStore.set(j); history.replaceState(null, "", location.pathname + location.hash); }
+  }
+  initAccount({ openSheet, toast, icon, getLibrary, applyLibrary, applyShared, sharedEdits, markSharedPushed,
     pendingAudio: () => [...tracks.values()].filter((t) => t.file && !t.cloud && !noCloud.has(t.id)).map((t) => t.id),
     cloudFile,
-    markCloud: (id) => { const t = tracks.get(id); if (t) { t.cloud = true; save(); } }, coverBlob: (id) => albums.get(id)?.art?.blob || null });
+    markCloud: (id) => { const t = tracks.get(id); if (t) { t.cloud = true; save(); } }, coverBlob: (id) => albums.get(id)?.art?.blob || null })
+    .then(() => { if (joinStore.get() && !currentUser() && accountAvailable()) { toast("Sign in to join the album you were invited to."); openAccount(); } });
 });
 
 {
